@@ -5,16 +5,14 @@ import { makeId, readFromStorage, writeToStorage } from './utils/storage';
 
 const candidateKey = 'educareer:candidates';
 const partnerKey = 'educareer:partners';
+const adminAuthKey = 'educareer:admin-auth';
+const adminAccessCode = 'EduCareer@2026';
 
 const tabs: { id: TabId; label: string }[] = [
   { id: 'home', label: 'Home' },
   { id: 'about', label: 'About Us' },
   { id: 'programs', label: 'Programs' },
-  { id: 'opportunities', label: 'Opportunities' },
-  { id: 'register', label: 'Graduate Registration' },
-  { id: 'partners', label: 'Partner Schools' },
-  { id: 'contact', label: 'Contact' },
-  { id: 'dashboard', label: 'Admin Dashboard' }
+  { id: 'opportunities', label: 'Opportunities' }
 ];
 
 const blankCandidate = {
@@ -47,9 +45,13 @@ export default function App() {
   );
   const [partners, setPartners] = useState<PartnerRequest[]>(() => readFromStorage<PartnerRequest[]>(partnerKey, []));
   const [message, setMessage] = useState('');
+  const [adminCode, setAdminCode] = useState('');
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => readFromStorage<boolean>(adminAuthKey, false));
+  const [adminError, setAdminError] = useState('');
 
   useEffect(() => writeToStorage(candidateKey, candidates), [candidates]);
   useEffect(() => writeToStorage(partnerKey, partners), [partners]);
+  useEffect(() => writeToStorage(adminAuthKey, isAdmin), [isAdmin]);
 
   const dashboard = useMemo(() => {
     const openOpportunities = opportunities.filter((item) => item.status === 'Open').length;
@@ -70,8 +72,8 @@ export default function App() {
     };
     setCandidates((current) => [application, ...current]);
     setCandidateForm(blankCandidate);
-    setMessage('Candidate application submitted successfully. The EduCareer team can now review it in the dashboard.');
-    setActiveTab('dashboard');
+    setMessage('Candidate application submitted successfully. The EduCareer team will review it and contact you.');
+    setActiveTab('home');
   }
 
   function submitPartner(event: FormEvent<HTMLFormElement>) {
@@ -83,8 +85,31 @@ export default function App() {
     };
     setPartners((current) => [request, ...current]);
     setPartnerForm(blankPartner);
-    setMessage('Partner request submitted successfully. It is now available in the dashboard.');
-    setActiveTab('dashboard');
+    setMessage('Partner request submitted successfully. The EduCareer team will review it and contact your organization.');
+    setActiveTab('home');
+  }
+
+  function submitAdminLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (adminCode === adminAccessCode) {
+      setIsAdmin(true);
+      setAdminCode('');
+      setAdminError('');
+      setMessage('Admin access granted.');
+      setActiveTab('dashboard');
+      return;
+    }
+
+    setAdminError('Invalid admin access code.');
+  }
+
+  function logoutAdmin() {
+    setIsAdmin(false);
+    setAdminCode('');
+    setAdminError('');
+    setMessage('Admin session closed.');
+    setActiveTab('home');
   }
 
   return (
@@ -129,7 +154,18 @@ export default function App() {
         )}
         {activeTab === 'partners' && <PartnerForm form={partnerForm} setForm={setPartnerForm} onSubmit={submitPartner} />}
         {activeTab === 'contact' && <ContactSection onNavigate={setActiveTab} />}
-        {activeTab === 'dashboard' && <DashboardSection stats={dashboard} candidates={candidates} partners={partners} />}
+        {activeTab === 'dashboard' && (
+          isAdmin ? (
+            <DashboardSection stats={dashboard} candidates={candidates} partners={partners} onLogout={logoutAdmin} />
+          ) : (
+            <AdminLoginSection
+              adminCode={adminCode}
+              setAdminCode={setAdminCode}
+              adminError={adminError}
+              onSubmit={submitAdminLogin}
+            />
+          )
+        )}
       </main>
 
       <footer className="footer">
@@ -141,6 +177,9 @@ export default function App() {
           <p>Email: <a href={`mailto:${contact.email}`}>{contact.email}</a></p>
           <p>Phone/WhatsApp: <a href={`tel:${contact.phone.replace(/\s/g, '')}`}>{contact.phone}</a></p>
           <p>{contact.address}</p>
+          <button className="secondary" type="button" onClick={() => setActiveTab('dashboard')}>
+            {isAdmin ? 'Admin Dashboard' : 'Admin Access'}
+          </button>
         </div>
       </footer>
     </div>
@@ -532,20 +571,69 @@ function PartnerForm({
   );
 }
 
+function AdminLoginSection({
+  adminCode,
+  setAdminCode,
+  adminError,
+  onSubmit
+}: {
+  adminCode: string;
+  setAdminCode: (value: string) => void;
+  adminError: string;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <section className="form-layout">
+      <div className="form-intro">
+        <p className="eyebrow">Administrative Access</p>
+        <h2>Restricted area for EduCareer staff.</h2>
+        <p>
+          The Admin Dashboard is not part of the public website navigation. It is reserved for authorized users who manage applications, partner requests, and program activity.
+        </p>
+        <p className="muted">
+          This is a temporary MVP access screen. In the next phase, we should replace it with Supabase Auth for real user accounts and stronger security.
+        </p>
+      </div>
+
+      <form className="form-card" onSubmit={onSubmit}>
+        <label>
+          Admin access code
+          <input
+            required
+            type="password"
+            value={adminCode}
+            onChange={(event) => setAdminCode(event.target.value)}
+            placeholder="Enter admin access code"
+          />
+        </label>
+
+        {adminError && <p className="muted">{adminError}</p>}
+
+        <button type="submit">Open Admin Dashboard</button>
+      </form>
+    </section>
+  );
+}
+
 function DashboardSection({
   stats,
   candidates,
-  partners
+  partners,
+  onLogout
 }: {
   stats: { label: string; value: string }[];
   candidates: CandidateApplication[];
   partners: PartnerRequest[];
+  onLogout: () => void;
 }) {
   return (
     <section className="section-stack">
-      <div className="section-heading">
-        <p className="eyebrow">Admin Dashboard</p>
-        <h2>Operational view for applications, partnerships, and program activity.</h2>
+      <div className="section-heading split-heading">
+        <div>
+          <p className="eyebrow">Admin Dashboard</p>
+          <h2>Operational view for applications, partnerships, and program activity.</h2>
+        </div>
+        <button className="secondary" type="button" onClick={onLogout}>Logout</button>
       </div>
       <div className="metric-grid">
         {stats.map((stat) => (
