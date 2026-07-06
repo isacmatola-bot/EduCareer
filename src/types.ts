@@ -1,4 +1,4 @@
-export type TabId = 'home' | 'programs' | 'opportunities' | 'register' | 'partners' | 'dashboard';
+export type TabId = 'home' | 'about' | 'programs' | 'opportunities' | 'register' | 'partners' | 'contact' | 'dashboard';
 
 export type Program = {
   id: string;

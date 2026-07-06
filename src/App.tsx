@@ -8,10 +8,12 @@ const partnerKey = 'educareer:partners';
 
 const tabs: { id: TabId; label: string }[] = [
   { id: 'home', label: 'Home' },
+  { id: 'about', label: 'About Us' },
   { id: 'programs', label: 'Programs' },
   { id: 'opportunities', label: 'Opportunities' },
   { id: 'register', label: 'Graduate Registration' },
   { id: 'partners', label: 'Partner Schools' },
+  { id: 'contact', label: 'Contact' },
   { id: 'dashboard', label: 'Admin Dashboard' }
 ];
 
@@ -119,12 +121,14 @@ export default function App() {
         )}
 
         {activeTab === 'home' && <HomeSection onNavigate={setActiveTab} />}
+        {activeTab === 'about' && <AboutSection onNavigate={setActiveTab} />}
         {activeTab === 'programs' && <ProgramsSection />}
         {activeTab === 'opportunities' && <OpportunitiesSection onNavigate={setActiveTab} />}
         {activeTab === 'register' && (
           <CandidateForm form={candidateForm} setForm={setCandidateForm} onSubmit={submitCandidate} />
         )}
         {activeTab === 'partners' && <PartnerForm form={partnerForm} setForm={setPartnerForm} onSubmit={submitPartner} />}
+        {activeTab === 'contact' && <ContactSection onNavigate={setActiveTab} />}
         {activeTab === 'dashboard' && <DashboardSection stats={dashboard} candidates={candidates} partners={partners} />}
       </main>
 
@@ -156,6 +160,7 @@ function HomeSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           <div className="action-row">
             <button type="button" onClick={() => onNavigate('register')}>Register as Graduate</button>
             <button className="secondary" type="button" onClick={() => onNavigate('partners')}>Become a Partner School</button>
+            <button className="secondary" type="button" onClick={() => onNavigate('contact')}>Contact EduCareer</button>
           </div>
         </div>
         <div className="impact-card">
@@ -213,6 +218,132 @@ function HomeSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           {beneficiaries.map((beneficiary) => <span key={beneficiary}>{beneficiary}</span>)}
         </div>
       </article>
+    </section>
+  );
+}
+
+function AboutSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
+  return (
+    <section className="section-stack">
+      <div className="section-heading">
+        <p className="eyebrow">About EduCareer</p>
+        <h2>A professional bridge between teacher training and meaningful education employment.</h2>
+        <p className="muted">
+          EduCareer is a non-profit association based in Sofala Province, Mozambique. It supports postgraduate students and teacher trainees as they move from academic preparation into practical classroom experience, mentorship, and sustainable career opportunities.
+        </p>
+      </div>
+
+      <div className="two-column">
+        <article className="content-card">
+          <h3>Organization Overview</h3>
+          <p>
+            EduCareer connects teacher training institutions, graduates, public schools, private schools, local employers, and education partners so that trained educators can access structured professional pathways.
+          </p>
+          <p>
+            The association responds to a practical challenge in the education sector: many qualified or nearly qualified educators need field experience, while schools need motivated classroom support.
+          </p>
+        </article>
+
+        <article className="content-card">
+          <h3>Governance</h3>
+          <p>
+            EduCareer is led by a Board of Directors made up of education professionals, representatives from training institutions, and community leaders.
+          </p>
+          <p>
+            Day-to-day operations are coordinated by an Executive Director, Program Coordinator, Partnerships and Outreach Officer, and Administrative Assistant.
+          </p>
+        </article>
+      </div>
+
+      <div className="two-column">
+        <article className="content-card">
+          <h3>Mission Priorities</h3>
+          <div className="objective-list">
+            <div className="objective-item">
+              <span>1</span>
+              <p>Connect teacher trainees and postgraduate students with public and private education employers.</p>
+            </div>
+            <div className="objective-item">
+              <span>2</span>
+              <p>Provide structured professional development, mentorship, and job-readiness support.</p>
+            </div>
+            <div className="objective-item">
+              <span>3</span>
+              <p>Strengthen teaching practice through school-based engagement and practical placements.</p>
+            </div>
+          </div>
+        </article>
+
+        <article className="content-card">
+          <h3>Funding Sources</h3>
+          <ul>
+            <li>Education-focused NGO grants.</li>
+            <li>Partnerships with universities and teacher training institutions.</li>
+            <li>Local fundraising initiatives and community sponsorships.</li>
+            <li>Government and donor-funded education programs.</li>
+          </ul>
+        </article>
+      </div>
+
+      <article className="content-card">
+        <h3>Why EduCareer Matters</h3>
+        <div className="pill-row">
+          <span>Graduate employability</span>
+          <span>Classroom readiness</span>
+          <span>School support</span>
+          <span>Mentorship</span>
+          <span>Education partnerships</span>
+        </div>
+        <div className="action-row">
+          <button type="button" onClick={() => onNavigate('programs')}>Explore Programs</button>
+          <button className="secondary" type="button" onClick={() => onNavigate('register')}>Register as Graduate</button>
+        </div>
+      </article>
+    </section>
+  );
+}
+
+function ContactSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
+  return (
+    <section className="form-layout">
+      <div className="form-intro">
+        <p className="eyebrow">Contact EduCareer</p>
+        <h2>Let us connect educators, schools, and partners.</h2>
+        <p>
+          Use these contact details for graduate registration, school partnerships, mentorship collaboration, seminars, and institutional support.
+        </p>
+        <div className="action-row">
+          <button type="button" onClick={() => onNavigate('register')}>Graduate Registration</button>
+          <button className="secondary" type="button" onClick={() => onNavigate('partners')}>Partner Request</button>
+        </div>
+      </div>
+
+      <div className="section-stack">
+        <article className="content-card">
+          <h3>Contact Information</h3>
+          <p>Email: <a href={`mailto:${contact.email}`}>{contact.email}</a></p>
+          <p>Phone: <a href={`tel:${contact.phone.replace(/\s/g, '')}`}>{contact.phone}</a></p>
+          <p>WhatsApp: <a href={`https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`}>{contact.whatsapp}</a></p>
+          <p>Address: {contact.address}</p>
+        </article>
+
+        <article className="content-card">
+          <h3>Who Should Contact Us?</h3>
+          <ul>
+            <li>Graduate teachers looking for career opportunities.</li>
+            <li>Trainee teachers seeking practical classroom experience.</li>
+            <li>Public or private schools needing motivated educators.</li>
+            <li>Universities, training institutes, NGOs, and donor programs seeking education partnerships.</li>
+          </ul>
+        </article>
+
+        <article className="content-card">
+          <h3>Recommended Next Step</h3>
+          <p>
+            Graduates should submit the registration form. Schools and institutions should submit the partner request form. The EduCareer team can then review each request from the Admin Dashboard.
+          </p>
+        </article>
+      </div>
     </section>
   );
 }
