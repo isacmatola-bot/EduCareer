@@ -272,24 +272,6 @@ function HomeSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         </div>
       </article>
 
-      <article className="content-card">
-        <h3>Strategic Objectives</h3>
-        <div className="objective-list">
-          {objectives.map((objective, index) => (
-            <div key={objective} className="objective-item">
-              <span>{index + 1}</span>
-              <p>{objective}</p>
-            </div>
-          ))}
-        </div>
-      </article>
-
-      <article className="content-card">
-        <h3>Target Beneficiaries</h3>
-        <div className="pill-row">
-          {beneficiaries.map((beneficiary) => <span key={beneficiary}>{beneficiary}</span>)}
-        </div>
-      </article>
     </section>
   );
 }
@@ -305,19 +287,8 @@ function AboutSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         </p>
       </div>
 
-      <article className="content-card">
-        <h3>Expected Impact</h3>
-        <ul>
-          <li>Higher employment rates for graduate teachers in Sofala Province.</li>
-          <li>Reduced student–teacher ratios in participating schools, especially where classroom pressure is high.</li>
-          <li>Stronger collaboration between academic institutions and the education labour market.</li>
-          <li>Improved teaching quality in public schools through fresh, motivated educators.</li>
-          <li>Better classroom readiness and confidence among teacher trainees.</li>
-        </ul>
-      </article>
-
-      <div className="two-column">
-        <article className="content-card">
+      <div className="about-layout">
+        <article className="content-card about-wide">
           <h3>Organization Overview</h3>
           <p>
             EduCareer connects teacher training institutions, graduates, public schools, private schools, local employers, and education partners so that trained educators can access structured professional pathways.
@@ -325,6 +296,25 @@ function AboutSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           <p>
             The association responds to a practical challenge in the education sector: many qualified or nearly qualified educators need field experience, while schools need motivated classroom support.
           </p>
+        </article>
+
+        <article className="content-card">
+          <h3>Strategic Objectives</h3>
+          <div className="objective-list">
+            {objectives.map((objective, index) => (
+              <div key={objective} className="objective-item">
+                <span>{index + 1}</span>
+                <p>{objective}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="content-card">
+          <h3>Target Beneficiaries</h3>
+          <div className="pill-row">
+            {beneficiaries.map((beneficiary) => <span key={beneficiary}>{beneficiary}</span>)}
+          </div>
         </article>
 
         <article className="content-card">
@@ -336,26 +326,6 @@ function AboutSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
             Day-to-day operations are coordinated by an Executive Director, Program Coordinator, Partnerships and Outreach Officer, and Administrative Assistant.
           </p>
         </article>
-      </div>
-
-      <div className="two-column">
-        <article className="content-card">
-          <h3>Mission Priorities</h3>
-          <div className="objective-list">
-            <div className="objective-item">
-              <span>1</span>
-              <p>Connect teacher trainees and postgraduate students with public and private education employers.</p>
-            </div>
-            <div className="objective-item">
-              <span>2</span>
-              <p>Provide structured professional development, mentorship, and job-readiness support.</p>
-            </div>
-            <div className="objective-item">
-              <span>3</span>
-              <p>Strengthen teaching practice through school-based engagement and practical placements.</p>
-            </div>
-          </div>
-        </article>
 
         <article className="content-card">
           <h3>Funding Sources</h3>
@@ -366,22 +336,23 @@ function AboutSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
             <li>Government and donor-funded education programs.</li>
           </ul>
         </article>
-      </div>
 
-      <article className="content-card">
-        <h3>Why EduCareer Matters</h3>
-        <div className="pill-row">
-          <span>Graduate employability</span>
-          <span>Classroom readiness</span>
-          <span>School support</span>
-          <span>Mentorship</span>
-          <span>Education partnerships</span>
-        </div>
-        <div className="action-row">
-          <button type="button" onClick={() => onNavigate('programs')}>Explore Programs</button>
-          <button className="secondary" type="button" onClick={() => onNavigate('register')}>Register as Graduate</button>
-        </div>
-      </article>
+        <article className="content-card about-wide">
+          <h3>Expected Impact</h3>
+          <ul>
+            <li>Higher employment rates for graduate teachers in Sofala Province.</li>
+            <li>Reduced student–teacher ratios in participating schools, especially where classroom pressure is high.</li>
+            <li>Stronger collaboration between academic institutions and the education labour market.</li>
+            <li>Improved teaching quality in public schools through fresh, motivated educators.</li>
+            <li>Better classroom readiness and confidence among teacher trainees.</li>
+          </ul>
+          <div className="action-row">
+            <button type="button" onClick={() => onNavigate('programs')}>Explore Programs</button>
+            <button className="secondary" type="button" onClick={() => onNavigate('register')}>Register as Graduate</button>
+            <button className="secondary" type="button" onClick={() => onNavigate('partners')}>Become a Partner</button>
+          </div>
+        </article>
+      </div>
     </section>
   );
 }
