@@ -202,15 +202,21 @@ function HomeSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
             <button className="secondary" type="button" onClick={() => onNavigate('contact')}>Contact EduCareer</button>
           </div>
         </div>
-        <div className="impact-card">
-          <h3>Expected Impact</h3>
-          <ul>
-            <li>Higher employment rates for graduate teachers in Sofala Province.</li>
-            <li>Reduced student–teacher ratios in participating schools.</li>
-            <li>Stronger collaboration between institutions and the education labour market.</li>
-            <li>Improved teaching quality through fresh, motivated educators.</li>
-            <li>Better classroom readiness and confidence among teacher trainees.</li>
-          </ul>
+        <div className="impact-card mission-vision-card">
+          <p className="eyebrow">Mission & Vision</p>
+          <h3>Building the future of education through prepared, confident, and connected teachers.</h3>
+          <div className="mini-statement">
+            <strong>Vision</strong>
+            <p>
+              To cultivate a strong network of qualified, motivated, and empowered educators who drive the advancement of education in Sofala Province and beyond.
+            </p>
+          </div>
+          <div className="mini-statement">
+            <strong>Mission</strong>
+            <p>
+              To connect aspiring educators with employers, professional development, mentorship opportunities, and hands-on school engagement.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -224,20 +230,47 @@ function HomeSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         ))}
       </div>
 
-      <div className="two-column">
-        <article className="content-card">
-          <h3>Vision</h3>
-          <p>
-            To cultivate a strong network of qualified, motivated, and empowered educators who drive the advancement of education in Sofala Province and beyond.
-          </p>
-        </article>
-        <article className="content-card">
-          <h3>Mission</h3>
-          <p>
-            EduCareer connects aspiring educators with employers, professional development, mentorship opportunities, and hands-on school engagement.
-          </p>
-        </article>
-      </div>
+      <article className="content-card gallery-testimonial-frame">
+        <div className="section-heading split-heading">
+          <div>
+            <p className="eyebrow">Community in Action</p>
+            <h3>Activity Gallery & Testimonials</h3>
+            <p className="muted">
+              This frame will showcase EduCareer workshops, school placements, mentoring sessions, seminars, and voices from graduates and partner schools.
+            </p>
+          </div>
+          <button className="secondary" type="button" onClick={() => onNavigate('contact')}>Share an Activity</button>
+        </div>
+
+        <div className="gallery-grid">
+          <div className="gallery-tile">
+            <span>📚</span>
+            <strong>Professional Growth Seminars</strong>
+            <p>Photos from classroom management, digital pedagogy, and job-readiness sessions.</p>
+          </div>
+          <div className="gallery-tile">
+            <span>🏫</span>
+            <strong>School Placements</strong>
+            <p>Moments from TeachReady internships and assistant teacher placements.</p>
+          </div>
+          <div className="gallery-tile">
+            <span>🤝</span>
+            <strong>Mentorship Sessions</strong>
+            <p>Highlights from EduMentor meetings between experienced educators and new graduates.</p>
+          </div>
+        </div>
+
+        <div className="testimonial-grid">
+          <blockquote className="testimonial-card">
+            “EduCareer can help young teachers enter classrooms with confidence, guidance, and a clearer professional path.”
+            <cite>Graduate teacher testimonial</cite>
+          </blockquote>
+          <blockquote className="testimonial-card">
+            “Partner schools benefit when motivated trainees support learning and reduce pressure in large classrooms.”
+            <cite>Partner school testimonial</cite>
+          </blockquote>
+        </div>
+      </article>
 
       <article className="content-card">
         <h3>Strategic Objectives</h3>
@@ -271,6 +304,17 @@ function AboutSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           EduCareer is a non-profit association based in Sofala Province, Mozambique. It supports postgraduate students and teacher trainees as they move from academic preparation into practical classroom experience, mentorship, and sustainable career opportunities.
         </p>
       </div>
+
+      <article className="content-card">
+        <h3>Expected Impact</h3>
+        <ul>
+          <li>Higher employment rates for graduate teachers in Sofala Province.</li>
+          <li>Reduced student–teacher ratios in participating schools, especially where classroom pressure is high.</li>
+          <li>Stronger collaboration between academic institutions and the education labour market.</li>
+          <li>Improved teaching quality in public schools through fresh, motivated educators.</li>
+          <li>Better classroom readiness and confidence among teacher trainees.</li>
+        </ul>
+      </article>
 
       <div className="two-column">
         <article className="content-card">
