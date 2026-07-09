@@ -1205,3 +1205,665 @@ button.secondary:hover {
   height: 1.1em !important;
   margin: 0 !important;
 }
+
+/* Better visual hierarchy for Activity Gallery heading */
+.gallery-testimonial-frame .split-heading {
+  align-items: flex-start;
+}
+
+.gallery-testimonial-frame .section-heading > div {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.gallery-testimonial-frame .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  font-size: 0.82rem !important;
+  letter-spacing: 0.13em !important;
+  color: var(--muted);
+}
+
+.gallery-testimonial-frame h3 {
+  display: block;
+  margin: 0;
+  font-size: clamp(1.65rem, 2.5vw, 2.25rem);
+  line-height: 1.15;
+  letter-spacing: -0.04em;
+}
+
+.gallery-testimonial-frame .muted {
+  max-width: 860px;
+  margin-top: 0.35rem;
+}
+
+.gallery-testimonial-frame .section-heading button {
+  align-self: center;
+}
+
+/* Welcome prompt and role-based access */
+.welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 28rem),
+    rgba(10, 20, 30, 0.42);
+  backdrop-filter: blur(14px);
+}
+
+.welcome-card {
+  width: min(840px, 100%);
+  display: grid;
+  gap: 1.2rem;
+  border-radius: 1.8rem;
+  padding: clamp(1.4rem, 3vw, 2.2rem);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(214, 228, 223, 0.9);
+  box-shadow: 0 30px 90px rgba(15, 118, 110, 0.28);
+}
+
+.welcome-card h2 {
+  margin: 0.25rem 0;
+  font-size: clamp(1.75rem, 3vw, 2.75rem);
+  line-height: 1.08;
+  letter-spacing: -0.05em;
+}
+
+.welcome-actions {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(280px, 1.3fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.welcome-login {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border-radius: 1.25rem;
+  background: #f7fbf9;
+  border: 1px solid var(--border);
+}
+
+.auth-error {
+  margin: 0;
+  color: #991b1b;
+  font-weight: 800;
+}
+
+.small-note {
+  font-size: 0.88rem;
+}
+
+.account-strip {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.role-badge {
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
+  background: var(--soft);
+  color: var(--primary-dark);
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: capitalize;
+}
+
+.role-admin {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.portal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.1rem;
+}
+
+.portal-grid .content-card {
+  min-height: 230px;
+}
+
+@media (max-width: 900px) {
+  .welcome-actions,
+  .portal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-strip {
+    justify-content: flex-start;
+  }
+}
+
+/* Create Account block in welcome prompt */
+.welcome-entry-options {
+  display: grid;
+  gap: 1rem;
+}
+
+.create-account-box {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 1.25rem;
+  background:
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.10), transparent 16rem),
+    #f7fbf9;
+  border: 1px solid var(--border);
+}
+
+.create-account-box h3,
+.create-account-box p {
+  margin: 0;
+}
+
+.create-account-box h3 {
+  font-size: 1.25rem;
+  letter-spacing: -0.03em;
+}
+
+.create-account-box button {
+  width: 100%;
+}
+
+/* Responsive, scrollable welcome prompt */
+.welcome-overlay {
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  align-items: start !important;
+  place-items: start center !important;
+  padding: clamp(0.75rem, 2vw, 1.25rem) !important;
+}
+
+.welcome-card {
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  outline: none;
+  margin: auto 0;
+}
+
+.welcome-card:focus {
+  box-shadow:
+    0 30px 90px rgba(15, 118, 110, 0.28),
+    0 0 0 4px rgba(15, 118, 110, 0.12);
+}
+
+.welcome-card::-webkit-scrollbar {
+  width: 0.65rem;
+}
+
+.welcome-card::-webkit-scrollbar-track {
+  background: #eef4f1;
+  border-radius: 999px;
+}
+
+.welcome-card::-webkit-scrollbar-thumb {
+  background: rgba(15, 118, 110, 0.45);
+  border-radius: 999px;
+}
+
+.welcome-card::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 118, 110, 0.68);
+}
+
+@media (max-height: 760px) {
+  .welcome-card {
+    gap: 0.9rem;
+    padding: 1.2rem !important;
+  }
+
+  .welcome-card h2 {
+    font-size: clamp(1.45rem, 4vw, 2.05rem) !important;
+    line-height: 1.12;
+  }
+
+  .welcome-actions {
+    gap: 0.8rem;
+  }
+
+  .create-account-box,
+  .welcome-login {
+    padding: 0.85rem;
+  }
+
+  .welcome-login label,
+  .create-account-box label {
+    gap: 0.3rem;
+  }
+
+  .welcome-login input,
+  .welcome-login select,
+  .create-account-box select {
+    padding: 0.72rem 0.85rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .welcome-overlay {
+    padding: 0.6rem !important;
+  }
+
+  .welcome-card {
+    width: 100%;
+    max-height: calc(100dvh - 1.2rem);
+    border-radius: 1.25rem;
+  }
+
+  .welcome-actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  .welcome-entry-options,
+  .welcome-login {
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .welcome-card {
+    padding: 1rem !important;
+  }
+
+  .welcome-card h2 {
+    font-size: 1.55rem !important;
+  }
+
+  .welcome-card .muted {
+    font-size: 0.95rem;
+  }
+
+  .small-note {
+    font-size: 0.8rem;
+  }
+}
+
+/* Confirmation pop-up */
+.confirmation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(10, 20, 30, 0.42);
+  backdrop-filter: blur(12px);
+}
+
+.confirmation-card {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 1rem;
+  border-radius: 1.5rem;
+  padding: clamp(1.3rem, 3vw, 2rem);
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid var(--border);
+  box-shadow: 0 28px 80px rgba(15, 118, 110, 0.26);
+}
+
+.confirmation-card h2,
+.confirmation-card p {
+  margin: 0;
+}
+
+.confirmation-card h2 {
+  font-size: clamp(1.45rem, 3vw, 2rem);
+  letter-spacing: -0.04em;
+}
+
+.confirmation-card button {
+  width: fit-content;
+  min-width: 140px;
+}
+
+/* Logged-in home and opportunity application refinements */
+.opportunity-group-list {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.opportunity-group {
+  display: grid;
+  gap: 1rem;
+}
+
+.opportunity-group-heading {
+  padding: 1rem 1.2rem;
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid var(--border);
+}
+
+.opportunity-group-heading h3,
+.opportunity-group-heading p {
+  margin: 0;
+}
+
+.opportunity-group-heading h3 {
+  color: var(--primary-dark);
+  letter-spacing: -0.03em;
+}
+
+.opportunity-group-heading p {
+  margin-top: 0.35rem;
+  color: var(--muted);
+}
+
+.opportunity-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.ai-match-badge {
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  background: #ecfeff;
+  color: #0f766e;
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.opportunity-actions {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.checkbox-group {
+  display: grid;
+  gap: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  padding: 1rem;
+  background: #f7fbf9;
+}
+
+.checkbox-group legend {
+  padding: 0 0.4rem;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.checkbox-option {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 0.65rem !important;
+  padding: 0.85rem;
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+}
+
+.checkbox-option input {
+  width: auto !important;
+  margin-top: 0.35rem;
+  accent-color: var(--primary);
+}
+
+.checkbox-option span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.checkbox-option small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .checkbox-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .opportunity-actions button {
+    width: 100%;
+  }
+}
+
+.applied-button {
+  cursor: not-allowed;
+  opacity: 0.78;
+  background: #e7f7ef !important;
+  color: #047857 !important;
+  border-color: rgba(4, 120, 87, 0.18) !important;
+}
+
+/* Admin-only workspace */
+.admin-only-layout {
+  padding-top: 1rem;
+}
+
+.admin-access-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 1.2rem 1.4rem;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 1.4rem;
+  background: linear-gradient(135deg, rgba(15, 118, 110, 0.1), rgba(255, 255, 255, 0.88));
+}
+
+.admin-access-banner h3,
+.admin-access-banner p {
+  margin: 0;
+}
+
+.admin-access-banner p {
+  margin-top: 0.35rem;
+  color: var(--muted);
+}
+
+.admin-access-banner span {
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 0.5rem 0.85rem;
+  background: #ecfeff;
+  color: #0f766e;
+  font-weight: 900;
+}
+
+.admin-permission-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.admin-module-grid {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.admin-module {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.85rem;
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+}
+
+.admin-module.enabled {
+  background: #effdf5;
+}
+
+.admin-module.disabled {
+  background: #f8fafc;
+  opacity: 0.68;
+}
+
+.admin-module span {
+  font-weight: 900;
+  color: var(--primary-dark);
+}
+
+.admin-account-form-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-account-form {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (max-width: 760px) {
+  .admin-access-banner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* Admin-only workspace */
+.admin-only-layout {
+  padding-top: 1rem;
+}
+
+.admin-access-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 1.2rem 1.4rem;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 1.4rem;
+  background: linear-gradient(135deg, rgba(15, 118, 110, 0.1), rgba(255, 255, 255, 0.88));
+}
+
+.admin-access-banner h3,
+.admin-access-banner p {
+  margin: 0;
+}
+
+.admin-access-banner p {
+  margin-top: 0.35rem;
+  color: var(--muted);
+}
+
+.admin-access-banner span {
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 0.5rem 0.85rem;
+  background: #ecfeff;
+  color: #0f766e;
+  font-weight: 900;
+}
+
+.admin-permission-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.admin-module-grid {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.admin-module {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.85rem;
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+}
+
+.admin-module.enabled {
+  background: #effdf5;
+}
+
+.admin-module.disabled {
+  background: #f8fafc;
+  opacity: 0.68;
+}
+
+.admin-module span {
+  font-weight: 900;
+  color: var(--primary-dark);
+}
+
+.admin-account-form-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-account-form {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (max-width: 760px) {
+  .admin-access-banner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* Admin privilege states */
+.admin-module.manage {
+  background: #effdf5;
+  border-color: rgba(4, 120, 87, 0.2);
+}
+
+.admin-module.read {
+  background: #f8fafc;
+  border-color: rgba(100, 116, 139, 0.22);
+}
+
+.admin-module.restricted {
+  background: #fff7ed;
+  border-color: rgba(194, 65, 12, 0.18);
+  opacity: 0.82;
+}
+
+.admin-module div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.admin-module p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.admin-module.manage span {
+  color: #047857;
+}
+
+.admin-module.read span {
+  color: #475569;
+}
+
+.admin-module.restricted span {
+  color: #c2410c;
+}
