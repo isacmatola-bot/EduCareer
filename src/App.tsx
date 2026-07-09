@@ -118,11 +118,11 @@ export default function App() {
         <div className="brand-block">
           <div className="brand-mark">EC</div>
           <div>
-            <p className="eyebrow">Non-profit association · Sofala Province, Mozambique</p>
             <h1>EduCareer</h1>
             <p>Empowering Future Educators</p>
           </div>
         </div>
+
         <nav className="nav-tabs" aria-label="Main navigation">
           {tabs.map((tab) => (
             <button
@@ -198,19 +198,20 @@ function HomeSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           </p>
           <div className="action-row">
             <button type="button" onClick={() => onNavigate('register')}>Register as Graduate</button>
-            <button className="secondary" type="button" onClick={() => onNavigate('partners')}>Become a Partner School</button>
+            <button className="secondary" type="button" onClick={() => onNavigate('partners')}>Become a Partner</button>
             <button className="secondary" type="button" onClick={() => onNavigate('contact')}>Contact EduCareer</button>
           </div>
         </div>
+
         <div className="impact-card mission-vision-card">
           <p className="eyebrow">Mission & Vision</p>
-          <h3>Building the future of education through prepared, confident, and connected teachers.</h3>
           <div className="mini-statement">
             <strong>Vision</strong>
             <p>
               To cultivate a strong network of qualified, motivated, and empowered educators who drive the advancement of education in Sofala Province and beyond.
             </p>
           </div>
+
           <div className="mini-statement">
             <strong>Mission</strong>
             <p>
@@ -271,7 +272,6 @@ function HomeSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           </blockquote>
         </div>
       </article>
-
     </section>
   );
 }
@@ -520,7 +520,7 @@ function CandidateForm({
           Motivation and career goals
           <textarea required rows={5} value={form.motivation} onChange={(event) => setForm({ ...form, motivation: event.target.value })} />
         </label>
-        <button type="submit">Submit Candidate Application</button>
+        <button type="submit">Submit Application</button>
       </form>
     </section>
   );
@@ -606,7 +606,7 @@ function AdminLoginSection({
           The Admin Dashboard is not part of the public website navigation. It is reserved for authorized users who manage applications, partner requests, and program activity.
         </p>
         <p className="muted">
-          This is a temporary MVP access screen. In the next phase, we should replace it with Supabase Auth for real user accounts and stronger security.
+          This is a temporary MVP access screen. In the next phase, we should replace it with Supabase Auth.
         </p>
       </div>
 

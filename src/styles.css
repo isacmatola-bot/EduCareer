@@ -637,3 +637,38 @@ textarea:focus {
   }
 }
 
+
+/* EduCareer typography refinement requested */
+.hero-card .eyebrow {
+  font-size: clamp(1.8rem, 2.8vw, 2.35rem) !important;
+  line-height: 1.15;
+  letter-spacing: 0.01em !important;
+  font-weight: 800 !important;
+  margin-bottom: 0.8rem;
+}
+
+.hero-card h2 {
+  font-size: clamp(1.25rem, 1.8vw, 1.85rem) !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.02em !important;
+  max-width: 760px;
+}
+
+.mission-vision-card {
+  gap: 0.75rem;
+}
+
+.mission-vision-card .eyebrow {
+  margin-bottom: 0.25rem;
+}
+
+@media (max-width: 900px) {
+  .hero-card .eyebrow {
+    font-size: clamp(1.45rem, 5vw, 2rem) !important;
+  }
+
+  .hero-card h2 {
+    font-size: clamp(1.15rem, 4.5vw, 1.6rem) !important;
+  }
+}
+
