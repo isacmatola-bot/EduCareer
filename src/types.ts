@@ -1,4 +1,4 @@
-export type TabId = 'home' | 'about' | 'programs' | 'opportunities' | 'register' | 'partners' | 'contact' | 'dashboard';
+export type TabId = 'home' | 'about' | 'programs' | 'opportunities' | 'register' | 'partners' | 'contact' | 'dashboard' | 'portal';
 
 export type Program = {
   id: string;
@@ -28,7 +28,7 @@ export type CandidateApplication = {
   institution: string;
   qualification: string;
   teachingArea: string;
-  preferredProgram: string;
+  preferredPrograms: string[];
   motivation: string;
   createdAt: string;
 };
