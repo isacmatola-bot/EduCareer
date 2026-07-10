@@ -17,7 +17,10 @@ const tabs: { id: TabId; label: string }[] = [
 const blankCandidate = {
   fullName: '',
   email: '',
+  username: '',
   phone: '',
+  password: '',
+  confirmPassword: '',
   province: 'Sofala',
   institution: '',
   qualification: '',
@@ -30,7 +33,10 @@ const blankPartner = {
   organizationName: '',
   contactPerson: '',
   email: '',
+  username: '',
   phone: '',
+  password: '',
+  confirmPassword: '',
   organizationType: 'Public School',
   supportNeeded: ''
 };
@@ -76,29 +82,114 @@ export default function App() {
     ];
   }, [candidates.length, partners.length]);
 
-  function submitCandidate(event: FormEvent<HTMLFormElement>) {
+  async function submitCandidate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const username = candidateForm.username.trim().toLowerCase();
+    const email = candidateForm.email.trim().toLowerCase();
+
+    if (username.length < 4) {
+      setMessage('Username must have at least 4 characters.');
+      return;
+    }
+
+    if (candidateForm.password.length < 8) {
+      setMessage('Password must have at least 8 characters.');
+      return;
+    }
+
+    if (candidateForm.password !== candidateForm.confirmPassword) {
+      setMessage('Passwords do not match.');
+      return;
+    }
+
+    const { password, confirmPassword, ...publicCandidateForm } = candidateForm;
+
+    const { error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          username,
+          full_name: publicCandidateForm.fullName,
+          phone: publicCandidateForm.phone,
+          role: 'candidate'
+        }
+      }
+    });
+
+    if (signUpError) {
+      setMessage(`Candidate account creation failed: ${signUpError.message}`);
+      return;
+    }
+
     const application: CandidateApplication = {
       id: makeId('candidate'),
-      ...candidateForm,
+      ...publicCandidateForm,
+      email,
+      username,
       createdAt: new Date().toISOString()
     };
+
     setCandidates((current) => [application, ...current]);
     setCandidateForm(blankCandidate);
-    setMessage('Candidate application submitted successfully. The EduCareer team will review it and contact you.');
+    setMessage('Candidate account and application submitted successfully.');
     setActiveTab('home');
   }
 
-  function submitPartner(event: FormEvent<HTMLFormElement>) {
+  async function submitPartner(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const username = partnerForm.username.trim().toLowerCase();
+    const email = partnerForm.email.trim().toLowerCase();
+
+    if (username.length < 4) {
+      setMessage('Username must have at least 4 characters.');
+      return;
+    }
+
+    if (partnerForm.password.length < 8) {
+      setMessage('Password must have at least 8 characters.');
+      return;
+    }
+
+    if (partnerForm.password !== partnerForm.confirmPassword) {
+      setMessage('Passwords do not match.');
+      return;
+    }
+
+    const { password, confirmPassword, ...publicPartnerForm } = partnerForm;
+
+    const { error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          username,
+          full_name: publicPartnerForm.contactPerson,
+          organization_name: publicPartnerForm.organizationName,
+          phone: publicPartnerForm.phone,
+          role: 'partner'
+        }
+      }
+    });
+
+    if (signUpError) {
+      setMessage(`Partner account creation failed: ${signUpError.message}`);
+      return;
+    }
+
     const request: PartnerRequest = {
       id: makeId('partner'),
-      ...partnerForm,
+      ...publicPartnerForm,
+      email,
+      username,
       createdAt: new Date().toISOString()
     };
+
     setPartners((current) => [request, ...current]);
     setPartnerForm(blankPartner);
-    setMessage('Partner request submitted successfully. The EduCareer team will review it and contact your organization.');
+    setMessage('Partner account and request submitted successfully.');
     setActiveTab('home');
   }
 
