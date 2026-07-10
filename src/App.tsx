@@ -57,6 +57,7 @@ const languages = [
 ];
 
 const blankCandidate = {
+  username: '',
   fullName: '',
   email: '',
   phone: '',
@@ -69,6 +70,7 @@ const blankCandidate = {
 };
 
 const blankPartner = {
+  username: '',
   organizationName: '',
   contactPerson: '',
   email: '',
@@ -79,6 +81,7 @@ const blankPartner = {
 
 const blankAccountForm = {
   role: 'graduate' as UserRole,
+  username: '',
   fullName: '',
   organizationName: '',
   email: '',
@@ -338,6 +341,7 @@ export default function App() {
     if (selectedRole === 'partner') {
       setPartnerForm({
         ...blankPartner,
+        username: accountForm.username,
         organizationName: accountForm.organizationName,
         email: accountForm.email,
         phone: accountForm.phone
@@ -345,6 +349,7 @@ export default function App() {
     } else {
       setCandidateForm({
         ...blankCandidate,
+        username: accountForm.username,
         fullName: accountForm.fullName,
         email: accountForm.email,
         phone: accountForm.phone

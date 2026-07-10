@@ -21,6 +21,7 @@ export type Opportunity = {
 
 export type CandidateApplication = {
   id: string;
+  username: string;
   fullName: string;
   email: string;
   phone: string;
@@ -35,6 +36,7 @@ export type CandidateApplication = {
 
 export type PartnerRequest = {
   id: string;
+  username: string;
   organizationName: string;
   contactPerson: string;
   email: string;
