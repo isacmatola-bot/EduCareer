@@ -41,6 +41,18 @@ import type { AccountUpdatePatch, AdminAccountDraft } from './pages/PortalPage';
 import { ProgramsPage } from './pages/ProgramsPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { isKnownRoute, routeForTab, tabFromPath } from './router';
+import {
+  createSupabaseAdminAccount,
+  deleteSupabaseAccountProfile,
+  insertSupabaseCandidate,
+  insertSupabasePartnerRequest,
+  loadSupabaseSnapshot,
+  registerSupabaseAccount,
+  signInSupabaseAccount,
+  signOutSupabaseAccount,
+  updateSupabaseAccountProfile
+} from './services/supabaseStore';
+import { isSupabaseConfigured } from './services/supabaseClient';
 import type { CandidateApplication, Opportunity, PartnerRequest, TabId } from './types';
 import { makeId, readFromStorage, writeToStorage } from './utils/storage';
 
@@ -48,6 +60,40 @@ const blankLoginForm: LoginForm = {
   username: '',
   password: ''
 };
+
+function translateAuthError(
+  error: string | undefined,
+  t: (key: string) => string,
+  fallbackKey: string
+): string {
+  if (!error) {
+    return t(fallbackKey);
+  }
+
+  const authErrorKeys: Record<string, string> = {
+    'Invalid username or password.': 'messages.invalidLogin',
+    'Username must contain at least 3 characters.': 'messages.usernameShort',
+    'Password must contain at least 8 characters.': 'messages.passwordShort',
+    'This username is already registered. Choose another username or log in.': 'messages.usernameTaken',
+    'This account is disabled. Contact EduCareer support.': 'messages.accountDisabled'
+  };
+
+  return t(authErrorKeys[error] ?? fallbackKey);
+}
+
+function getErrorMessage(error: unknown): string | undefined {
+  return error instanceof Error ? error.message : undefined;
+}
+
+function mergeAccount(accounts: UserAccount[], account: UserAccount): UserAccount[] {
+  const existing = accounts.some((item) => item.id === account.id);
+
+  if (existing) {
+    return accounts.map((item) => (item.id === account.id ? account : item));
+  }
+
+  return [account, ...accounts];
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>(() => tabFromPath(window.location.pathname));
@@ -88,11 +134,56 @@ export default function App() {
   const isAdmin = currentAccount?.role === 'admin';
   const isDefaultAdmin = currentAccount?.role === 'admin' && currentAccount.adminRole === 'default_admin';
 
-  useEffect(() => writeToStorage(candidateKey, candidates), [candidates]);
-  useEffect(() => writeToStorage(partnerKey, partners), [partners]);
-  useEffect(() => writeToStorage(accountKey, accounts), [accounts]);
-  useEffect(() => writeToStorage(sessionKey, session), [session]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      writeToStorage(candidateKey, candidates);
+    }
+  }, [candidates]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      writeToStorage(partnerKey, partners);
+    }
+  }, [partners]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      writeToStorage(accountKey, accounts);
+    }
+  }, [accounts]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      writeToStorage(sessionKey, session);
+    }
+  }, [session]);
   useEffect(() => writeToStorage(languageKey, selectedLanguage), [selectedLanguage]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    loadSupabaseSnapshot()
+      .then((snapshot) => {
+        if (isCancelled) {
+          return;
+        }
+
+        setAccounts(snapshot.accounts);
+        setCandidates(snapshot.candidates);
+        setPartners(snapshot.partners);
+        setSession(snapshot.session);
+        setShowWelcome(!snapshot.session);
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          setMessage(getErrorMessage(error) ?? 'Unable to load Supabase data.');
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
   useEffect(() => {
     document.documentElement.lang = languageToHtmlLang(selectedLanguage);
   }, [selectedLanguage]);
@@ -211,12 +302,31 @@ export default function App() {
     setLoginError('');
   }
 
-  function submitLogin(event: FormEvent<HTMLFormElement>) {
+  async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isSupabaseConfigured) {
+      try {
+        const account = await signInSupabaseAccount(loginForm);
+        setAccounts((currentAccounts) => mergeAccount(currentAccounts, account));
+        setSession(sessionForAccount(account));
+        setLoginForm(blankLoginForm);
+        setLoginError('');
+        setShowWelcome(false);
+        setAccessNoticeShown(true);
+        setMessage(t('messages.welcomeBack', { name: account.displayName }));
+        navigateTo('portal');
+      } catch (error) {
+        setLoginError(translateAuthError(getErrorMessage(error), t, 'messages.invalidLogin'));
+      }
+
+      return;
+    }
+
     const result = authenticateAccount(accounts, loginForm);
 
     if (!result.account) {
-      setLoginError(result.error ?? t('messages.invalidLogin'));
+      setLoginError(translateAuthError(result.error, t, 'messages.invalidLogin'));
       return;
     }
 
@@ -229,12 +339,38 @@ export default function App() {
     navigateTo('portal');
   }
 
-  function submitAdminLogin(event: FormEvent<HTMLFormElement>) {
+  async function submitAdminLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isSupabaseConfigured) {
+      try {
+        const account = await signInSupabaseAccount(loginForm);
+
+        if (account.role !== 'admin') {
+          await signOutSupabaseAccount();
+          setLoginError(t('messages.invalidAdminLogin'));
+          return;
+        }
+
+        setAccounts((currentAccounts) => mergeAccount(currentAccounts, account));
+        setSession(sessionForAccount(account));
+        setLoginForm(blankLoginForm);
+        setLoginError('');
+        setShowWelcome(false);
+        setAccessNoticeShown(true);
+        setMessage(t('messages.adminAccess'));
+        navigateTo('portal');
+      } catch (error) {
+        setLoginError(translateAuthError(getErrorMessage(error), t, 'messages.invalidAdminLogin'));
+      }
+
+      return;
+    }
+
     const result = authenticateAccount(accounts, loginForm);
 
     if (!result.account || result.account.role !== 'admin') {
-      setLoginError(t('messages.invalidAdminLogin'));
+      setLoginError(translateAuthError(result.error, t, 'messages.invalidAdminLogin'));
       return;
     }
 
@@ -247,7 +383,15 @@ export default function App() {
     navigateTo('portal');
   }
 
-  function logout() {
+  async function logout() {
+    if (isSupabaseConfigured) {
+      try {
+        await signOutSupabaseAccount();
+      } catch (error) {
+        setMessage(getErrorMessage(error) ?? t('messages.sessionClosed'));
+      }
+    }
+
     setSession(null);
     setLoginForm(blankLoginForm);
     setLoginError('');
@@ -257,9 +401,43 @@ export default function App() {
     navigateTo('home');
   }
 
-  function submitCandidate(event: FormEvent<HTMLFormElement>) {
+  async function submitCandidate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const { password, ...candidateProfile } = candidateForm;
+
+    if (isSupabaseConfigured) {
+      try {
+        const account = await registerSupabaseAccount({
+          role: 'graduate',
+          username: candidateForm.username,
+          password,
+          displayName: candidateForm.fullName,
+          email: candidateForm.email,
+          phone: candidateForm.phone
+        });
+        const application: CandidateApplication = {
+          id: makeId('candidate'),
+          ...candidateProfile,
+          username: account.username,
+          createdAt: new Date().toISOString()
+        };
+
+        await insertSupabaseCandidate(application, account.id);
+        setAccounts((currentAccounts) => mergeAccount(currentAccounts, account));
+        setSession(sessionForAccount(account));
+        setCandidates((current) => [application, ...current]);
+        setCandidateForm(blankCandidate);
+        setShowWelcome(false);
+        setAccessNoticeShown(true);
+        setMessage(t('messages.graduateCreated'));
+        navigateTo('portal');
+      } catch (error) {
+        setMessage(translateAuthError(getErrorMessage(error), t, 'messages.unableGraduate'));
+      }
+
+      return;
+    }
+
     const result = createAccount(accounts, {
       role: 'graduate',
       username: candidateForm.username,
@@ -270,7 +448,7 @@ export default function App() {
     });
 
     if (!result.account || !result.accounts) {
-      setMessage(result.error ?? t('messages.unableGraduate'));
+      setMessage(translateAuthError(result.error, t, 'messages.unableGraduate'));
       return;
     }
 
@@ -290,9 +468,43 @@ export default function App() {
     navigateTo('portal');
   }
 
-  function submitPartner(event: FormEvent<HTMLFormElement>) {
+  async function submitPartner(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const { password, ...partnerProfile } = partnerForm;
+
+    if (isSupabaseConfigured) {
+      try {
+        const account = await registerSupabaseAccount({
+          role: 'partner',
+          username: partnerForm.username,
+          password,
+          displayName: partnerForm.organizationName,
+          email: partnerForm.email,
+          phone: partnerForm.phone
+        });
+        const request: PartnerRequest = {
+          id: makeId('partner'),
+          ...partnerProfile,
+          username: account.username,
+          createdAt: new Date().toISOString()
+        };
+
+        await insertSupabasePartnerRequest(request, account.id);
+        setAccounts((currentAccounts) => mergeAccount(currentAccounts, account));
+        setSession(sessionForAccount(account));
+        setPartners((current) => [request, ...current]);
+        setPartnerForm(blankPartner);
+        setShowWelcome(false);
+        setAccessNoticeShown(true);
+        setMessage(t('messages.partnerCreated'));
+        navigateTo('portal');
+      } catch (error) {
+        setMessage(translateAuthError(getErrorMessage(error), t, 'messages.unablePartner'));
+      }
+
+      return;
+    }
+
     const result = createAccount(accounts, {
       role: 'partner',
       username: partnerForm.username,
@@ -303,7 +515,7 @@ export default function App() {
     });
 
     if (!result.account || !result.accounts) {
-      setMessage(result.error ?? t('messages.unablePartner'));
+      setMessage(translateAuthError(result.error, t, 'messages.unablePartner'));
       return;
     }
 
@@ -343,9 +555,33 @@ export default function App() {
     setMessage(t('messages.applicationIntent', { title: opportunity.title }));
   }
 
-  function createAdminAccount(draft: AdminAccountDraft) {
+  async function createAdminAccount(draft: AdminAccountDraft) {
     if (!isDefaultAdmin) {
       setMessage(t('messages.defaultAdminOnlyCreate'));
+      return;
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        const account = await createSupabaseAdminAccount({
+          role: 'admin',
+          username: draft.username,
+          password: draft.password,
+          displayName: draft.displayName,
+          email: draft.email,
+          phone: draft.phone,
+          adminRole: draft.adminRole
+        });
+
+        setAccounts((currentAccounts) => mergeAccount(currentAccounts, account));
+        setMessage(t('messages.adminCreated', {
+          name: account.displayName,
+          role: formatAdminRole(account.adminRole as AdminRole, t)
+        }));
+      } catch (error) {
+        setMessage(translateAuthError(getErrorMessage(error), t, 'messages.unableAdmin'));
+      }
+
       return;
     }
 
@@ -360,7 +596,7 @@ export default function App() {
     });
 
     if (!result.account || !result.accounts) {
-      setMessage(result.error ?? t('messages.unableAdmin'));
+      setMessage(translateAuthError(result.error, t, 'messages.unableAdmin'));
       return;
     }
 
@@ -371,15 +607,33 @@ export default function App() {
     }));
   }
 
-  function updateAccount(accountId: string, patch: AccountUpdatePatch) {
+  async function updateAccount(accountId: string, patch: AccountUpdatePatch) {
+    const targetAccount = accounts.find((account) => account.id === accountId);
+    const isDefaultAdminTarget = targetAccount?.adminRole === 'default_admin' || accountId === 'admin-default';
+
     if (!isDefaultAdmin) {
       setMessage(t('messages.defaultAdminOnlyEdit'));
       return;
     }
 
-    if (accountId === currentAccount?.id && patch.status !== 'active') {
+    if (isDefaultAdminTarget && patch.status !== 'active') {
       setMessage(t('messages.defaultMustStayActive'));
       return;
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        await updateSupabaseAccountProfile(accountId, {
+          displayName: patch.displayName,
+          email: patch.email,
+          phone: patch.phone,
+          status: isDefaultAdminTarget ? 'active' : patch.status,
+          adminRole: isDefaultAdminTarget ? 'default_admin' : patch.adminRole
+        });
+      } catch (error) {
+        setMessage(getErrorMessage(error) ?? t('messages.defaultAdminOnlyEdit'));
+        return;
+      }
     }
 
     setAccounts((currentAccounts) => currentAccounts.map((account) => {
@@ -392,17 +646,33 @@ export default function App() {
         displayName: patch.displayName,
         email: patch.email,
         phone: patch.phone,
-        status: account.id === 'admin-default' ? 'active' : patch.status,
-        adminRole: account.id === 'admin-default' ? 'default_admin' : patch.adminRole
+        status: account.adminRole === 'default_admin' || account.id === 'admin-default' ? 'active' : patch.status,
+        adminRole: account.adminRole === 'default_admin' || account.id === 'admin-default' ? 'default_admin' : patch.adminRole
       };
     }));
     setMessage(t('messages.accountUpdated'));
   }
 
-  function recoverAccount(accountId: string) {
+  async function recoverAccount(accountId: string) {
     if (!isDefaultAdmin) {
       setMessage(t('messages.defaultAdminOnlyRecover'));
       return;
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        const target = accounts.find((account) => account.id === accountId);
+        await updateSupabaseAccountProfile(accountId, {
+          displayName: target?.displayName,
+          email: target?.email,
+          phone: target?.phone,
+          status: 'active',
+          adminRole: target?.adminRole
+        });
+      } catch (error) {
+        setMessage(getErrorMessage(error) ?? t('messages.defaultAdminOnlyRecover'));
+        return;
+      }
     }
 
     setAccounts((currentAccounts) => currentAccounts.map((account) => (
@@ -411,15 +681,33 @@ export default function App() {
     setMessage(t('messages.accountRecovered'));
   }
 
-  function blockAccount(accountId: string) {
+  async function blockAccount(accountId: string) {
+    const targetAccount = accounts.find((account) => account.id === accountId);
+
     if (!isDefaultAdmin) {
       setMessage(t('messages.defaultAdminOnlyBlock'));
       return;
     }
 
-    if (accountId === currentAccount?.id || accountId === 'admin-default') {
+    if (accountId === currentAccount?.id || accountId === 'admin-default' || targetAccount?.adminRole === 'default_admin') {
       setMessage(t('messages.defaultCannotBlock'));
       return;
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        const target = accounts.find((account) => account.id === accountId);
+        await updateSupabaseAccountProfile(accountId, {
+          displayName: target?.displayName,
+          email: target?.email,
+          phone: target?.phone,
+          status: 'disabled',
+          adminRole: target?.adminRole
+        });
+      } catch (error) {
+        setMessage(getErrorMessage(error) ?? t('messages.defaultAdminOnlyBlock'));
+        return;
+      }
     }
 
     setAccounts((currentAccounts) => currentAccounts.map((account) => (
@@ -428,13 +716,15 @@ export default function App() {
     setMessage(t('messages.accountBlocked'));
   }
 
-  function deleteAccount(accountId: string) {
+  async function deleteAccount(accountId: string) {
+    const targetAccount = accounts.find((account) => account.id === accountId);
+
     if (!isDefaultAdmin) {
       setMessage(t('messages.defaultAdminOnlyDelete'));
       return;
     }
 
-    if (accountId === currentAccount?.id || accountId === 'admin-default') {
+    if (accountId === currentAccount?.id || accountId === 'admin-default' || targetAccount?.adminRole === 'default_admin') {
       setMessage(t('messages.defaultCannotDelete'));
       return;
     }
@@ -442,6 +732,15 @@ export default function App() {
     const shouldDelete = window.confirm(t('messages.confirmDelete'));
     if (!shouldDelete) {
       return;
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        await deleteSupabaseAccountProfile(accountId);
+      } catch (error) {
+        setMessage(getErrorMessage(error) ?? t('messages.defaultAdminOnlyDelete'));
+        return;
+      }
     }
 
     setAccounts((currentAccounts) => currentAccounts.filter((account) => account.id !== accountId));

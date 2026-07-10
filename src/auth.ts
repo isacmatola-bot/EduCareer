@@ -49,7 +49,7 @@ export type LoginForm = {
 
 export type RegistrationMode = 'graduate' | 'partner';
 
-export const defaultAdminCredentials = {
+const localDemoAdminCredentials = {
   username: 'default.admin',
   password: 'EduCareer@2026'
 };
@@ -76,6 +76,10 @@ export const roleLabels: Record<ViewerRole, string> = {
 };
 
 export function seedDefaultAdmin(accounts: UserAccount[]): UserAccount[] {
+  if (!import.meta.env.DEV) {
+    return accounts;
+  }
+
   const hasDefaultAdmin = accounts.some((account) => account.id === 'admin-default');
 
   if (hasDefaultAdmin) {
@@ -87,8 +91,8 @@ export function seedDefaultAdmin(accounts: UserAccount[]): UserAccount[] {
       id: 'admin-default',
       role: 'admin',
       adminRole: 'default_admin',
-      username: defaultAdminCredentials.username,
-      passwordHash: hashPassword(defaultAdminCredentials.password),
+      username: localDemoAdminCredentials.username,
+      passwordHash: hashPassword(localDemoAdminCredentials.password),
       displayName: 'Default EduCareer Admin',
       email: 'admin@educareer.local',
       createdAt: new Date().toISOString(),

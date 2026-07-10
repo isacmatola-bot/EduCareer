@@ -250,6 +250,10 @@ const en = {
   'messages.visitor': 'You are browsing as a Visitor. Apply actions require a Graduate or Partner account.',
   'messages.invalidLogin': 'Invalid username or password.',
   'messages.invalidAdminLogin': 'Invalid admin username or password.',
+  'messages.usernameShort': 'Username must contain at least 3 characters.',
+  'messages.passwordShort': 'Password must contain at least 8 characters.',
+  'messages.usernameTaken': 'This username is already registered. Choose another username or log in.',
+  'messages.accountDisabled': 'This account is disabled. Contact EduCareer support.',
   'messages.loggedInAs': 'You are logged in as {label}.',
   'messages.welcomeBack': 'Welcome back, {name}.',
   'messages.adminAccess': 'Admin access granted.',
@@ -513,6 +517,10 @@ const pt: Record<string, string> = {
   'messages.visitor': 'Está a navegar como Visitante. Acções de candidatura exigem uma conta Graduate ou Partner.',
   'messages.invalidLogin': 'Nome de utilizador ou senha inválidos.',
   'messages.invalidAdminLogin': 'Nome de utilizador ou senha admin inválidos.',
+  'messages.usernameShort': 'O nome de utilizador deve conter pelo menos 3 caracteres.',
+  'messages.passwordShort': 'A senha deve conter pelo menos 8 caracteres.',
+  'messages.usernameTaken': 'Este nome de utilizador já está registado. Escolha outro ou faça login.',
+  'messages.accountDisabled': 'Esta conta está bloqueada. Contacte o suporte EduCareer.',
   'messages.loggedInAs': 'Sessão iniciada como {label}.',
   'messages.welcomeBack': 'Bem-vindo de volta, {name}.',
   'messages.adminAccess': 'Acesso admin concedido.',
@@ -744,6 +752,10 @@ const jp: Record<string, string> = {
   'messages.visitor': '訪問者として閲覧中です。応募にはGraduateまたはPartnerアカウントが必要です。',
   'messages.invalidLogin': 'ユーザー名またはパスワードが正しくありません。',
   'messages.invalidAdminLogin': 'Adminユーザー名またはパスワードが正しくありません。',
+  'messages.usernameShort': 'ユーザー名は3文字以上で入力してください。',
+  'messages.passwordShort': 'パスワードは8文字以上で入力してください。',
+  'messages.usernameTaken': 'このユーザー名は既に登録されています。別の名前を選ぶかログインしてください。',
+  'messages.accountDisabled': 'このアカウントは無効です。EduCareerサポートに連絡してください。',
   'messages.loggedInAs': '{label} としてログイン中です。',
   'messages.welcomeBack': 'おかえりなさい、{name}。',
   'messages.adminAccess': 'Adminアクセスが許可されました。',
@@ -781,7 +793,7 @@ export function createTranslator(language: string | null | undefined) {
     }
 
     return Object.entries(vars).reduce(
-      (current, [name, value]) => current.replaceAll(`{${name}}`, String(value)),
+      (current, [name, value]) => current.split(`{${name}}`).join(String(value)),
       template
     );
   };

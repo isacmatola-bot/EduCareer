@@ -1,93 +1,125 @@
-# EduCareer – Empowering Future Educators
+# EduCareer
 
-EduCareer is a non-profit application designed for Sofala Province, Mozambique. It helps postgraduate students and teacher trainees transition from academic study into meaningful employment in the education sector by connecting candidates, schools, mentors, training institutions, and education employers.
+EduCareer e uma aplicacao web para apoiar estudantes de pos-graduacao, formandos de professores, escolas parceiras, mentores e empregadores do setor da educacao na Provincia de Sofala, Mocambique.
 
-## Current MVP
+O objetivo do MVP e demonstrar uma plataforma de transicao entre formacao academica e oportunidades profissionais no setor educacional.
 
-This first version is a deployable frontend prototype with local demo storage. It includes:
+## Funcionalidades
 
-- Public landing page with organization overview, vision, mission, strategic objectives, target beneficiaries, and expected impact.
-- Programs page for EduLink, TeachReady, EduMentor, and Professional Growth Seminars.
-- Opportunities page for career, internship, mentorship, and seminar listings.
-- Graduate registration form.
-- Partner school/institution request form.
-- Admin dashboard showing candidate applications, partner requests, open opportunities, and active programs.
-- Supabase SQL schema prepared for the next phase.
+- Pagina institucional com visao, missao, objetivos e impacto esperado.
+- Alternancia de idioma entre ingles, portugues e japones.
+- Listagem de programas: EduLink, TeachReady, EduMentor e Professional Growth Seminars.
+- Oportunidades de carreira, estagio, mentoria e seminarios.
+- Registo de candidatos graduados.
+- Pedido de parceria por escolas e instituicoes.
+- Portal de contas para visitantes, graduados, parceiros e administradores.
+- Dashboard administrativo para candidaturas, parceiros, oportunidades e programas.
+- Integracao preparada para Supabase Auth, PostgreSQL, RLS e Edge Functions.
 
-## Recommended stack
+## Stack
 
-- Frontend: React + TypeScript + Vite
-- Repository: GitHub
-- Deployment: Vercel
-- Future database/auth: Supabase PostgreSQL + Supabase Auth
+- React
+- TypeScript
+- Vite
+- Supabase
+- Vercel
 
-## Run locally
+## Requisitos
+
+- Node.js `>=22.12.0`
+- npm
+
+Se usa `nvm`, execute:
+
+```bash
+nvm use
+```
+
+## Instalar e executar
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the local URL shown in the terminal, usually:
+Abra:
 
 ```text
 http://localhost:3000
 ```
 
-## Build for production
+## Scripts
 
 ```bash
-npm run build
+npm run dev        # servidor local
+npm run typecheck  # validacao TypeScript
+npm run build      # build de producao
+npm run preview    # preview local do build
 ```
 
-## Upload to GitHub from the terminal
+## Modo demo local
 
-Create an empty repository on GitHub called `educareer`, then run these commands inside the project folder:
+Sem variaveis Supabase, a aplicacao usa `localStorage` para demonstracao.
 
-```bash
-git init
-git add .
-git commit -m "Initial EduCareer app"
-git branch -M main
-git remote add origin https://github.com/YOUR-USERNAME/educareer.git
-git push -u origin main
+Durante `npm run dev`, uma conta admin demo e criada apenas para ambiente local:
+
+```text
+usuario: default.admin
+senha: EduCareer@2026
 ```
 
-Replace `YOUR-USERNAME` with your GitHub username.
+Esta conta nao deve ser usada em producao. Builds de producao devem usar Supabase Auth.
 
-## Deploy to Vercel
+## Configurar Supabase
 
-1. Go to Vercel.
-2. Import the GitHub repository.
-3. Framework preset: Vite.
-4. Build command: `npm run build`.
-5. Output directory: `dist`.
-6. Deploy.
-
-Vercel supports Vite projects and creates deployments from connected repositories. Vercel also supports environment variables, which we will use later for Supabase keys.
-
-## Supabase next phase
-
-When ready to use real database storage:
-
-1. Create a Supabase project.
-2. Open the Supabase SQL Editor.
-3. Run `supabase/schema.sql`.
-4. Add the following variables to `.env.local` and to Vercel Environment Variables:
+Copie `.env.example` para `.env.local` e preencha:
 
 ```bash
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-public-anon-key
 ```
 
-5. Replace localStorage functions with Supabase insert/select calls.
+Depois:
 
-## Suggested next features
+1. Crie um projeto Supabase.
+2. Execute `supabase/schema.sql` no SQL Editor.
+3. Crie o primeiro utilizador no Supabase Auth.
+4. Promova esse utilizador para admin:
 
-- Admin login and protected dashboard.
-- Candidate profile management.
-- Opportunity creation by administrators.
-- AI matching between candidates and opportunities.
-- Placement tracking and supervisor feedback.
-- Email notifications for applications and partner requests.
-- Bilingual interface: English and Portuguese.
+```sql
+update public.profiles
+set role = 'admin', admin_role = 'default_admin', status = 'active'
+where email = 'admin@your-domain.com';
+```
+
+5. Configure `SUPABASE_SERVICE_ROLE_KEY` apenas no ambiente seguro da Edge Function.
+6. Deploy da function:
+
+```bash
+supabase functions deploy admin-create-user
+```
+
+## Deploy na Vercel
+
+1. Importe o repositorio do GitHub na Vercel.
+2. Framework preset: `Vite`.
+3. Build command: `npm run build`.
+4. Output directory: `dist`.
+5. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` em Environment Variables.
+
+Nao coloque `SUPABASE_SERVICE_ROLE_KEY` nas variaveis frontend da Vercel.
+
+## Preparacao para GitHub
+
+Esta copia ja esta preparada para upload:
+
+- `node_modules` e `dist` foram excluidos.
+- `.gitignore` foi reforcado.
+- GitHub Actions valida `npm ci`, `typecheck` e `build`.
+- `SECURITY.md` documenta cuidados com credenciais.
+- O diagnostico tecnico esta em `docs/PROJECT_DIAGNOSIS.md`.
+- O guia de upload esta em `docs/GITHUB_UPLOAD.md`.
+
+## Licenca
+
+Defina a licenca antes de tornar o repositorio publico ou aceitar contribuicoes externas.

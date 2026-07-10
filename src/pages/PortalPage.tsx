@@ -310,7 +310,8 @@ export function PortalPage({
           {showAccounts ? (
             <div className="account-list">
               {accounts.map((target) => {
-                const protectedAccount = target.id === account.id || target.id === 'admin-default';
+                const isDefaultAdminTarget = target.id === 'admin-default' || target.adminRole === 'default_admin';
+                const protectedAccount = target.id === account.id || isDefaultAdminTarget;
                 const isEditing = editingAccountId === target.id && editDraft;
                 const targetRoleLabel = target.role === 'admin' && target.adminRole
                   ? formatAdminRole(target.adminRole, t)
@@ -406,7 +407,7 @@ export function PortalPage({
                               value={editDraft.adminRole}
                               onChange={(event) => setEditDraft({ ...editDraft, adminRole: event.target.value as AdminRole })}
                             >
-                              {(target.id === 'admin-default' ? ['default_admin'] as AdminRole[] : adminRoleOptions).map((role) => (
+                              {(isDefaultAdminTarget ? ['default_admin'] as AdminRole[] : adminRoleOptions).map((role) => (
                                 <option key={role} value={role}>{formatAdminRole(role, t)}</option>
                               ))}
                             </select>
