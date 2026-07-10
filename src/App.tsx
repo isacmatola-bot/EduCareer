@@ -1,715 +1,542 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { beneficiaries, contact, metrics, objectives, opportunities, programs } from './data';
-import type { CandidateApplication, PartnerRequest, TabId } from './types';
+import type { FormEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  authenticateAccount,
+  createAccount,
+  seedDefaultAdmin,
+  sessionForAccount
+} from './auth';
+import type { AdminRole, AuthSession, LoginForm, RegistrationMode, UserAccount, ViewerRole } from './auth';
+import { AppLayout } from './components/AppLayout';
+import { Notice } from './components/Notice';
+import { WelcomeDialog } from './components/WelcomeDialog';
+import {
+  accountKey,
+  blankCandidate,
+  blankPartner,
+  candidateKey,
+  languageKey,
+  partnerKey,
+  sessionKey
+} from './constants';
+import { opportunities, programs } from './data';
+import { AdminLoginPage } from './features/admin/AdminLoginPage';
+import { DashboardPage } from './features/admin/DashboardPage';
+import {
+  createTranslator,
+  formatAccountLabel,
+  formatAdminRole,
+  I18nProvider,
+  languageToHtmlLang,
+  normalizeLanguage,
+  type LanguageCode
+} from './i18n';
+import { AboutPage } from './pages/AboutPage';
+import { ContactPage } from './pages/ContactPage';
+import { HomePage } from './pages/HomePage';
+import { OpportunitiesPage } from './pages/OpportunitiesPage';
+import { PartnerFormPage } from './pages/PartnerFormPage';
+import { PortalPage } from './pages/PortalPage';
+import type { AccountUpdatePatch, AdminAccountDraft } from './pages/PortalPage';
+import { ProgramsPage } from './pages/ProgramsPage';
+import { RegisterPage } from './pages/RegisterPage';
+import { isKnownRoute, routeForTab, tabFromPath } from './router';
+import type { CandidateApplication, Opportunity, PartnerRequest, TabId } from './types';
 import { makeId, readFromStorage, writeToStorage } from './utils/storage';
 
-const candidateKey = 'educareer:candidates';
-const partnerKey = 'educareer:partners';
-const adminAuthKey = 'educareer:admin-auth';
-const adminAccessCode = 'EduCareer@2026';
-
-const tabs: { id: TabId; label: string }[] = [
-  { id: 'home', label: 'Home' },
-  { id: 'about', label: 'About Us' },
-  { id: 'programs', label: 'Programs' },
-  { id: 'opportunities', label: 'Opportunities' }
-];
-
-const blankCandidate = {
-  fullName: '',
-  email: '',
-  phone: '',
-  province: 'Sofala',
-  institution: '',
-  qualification: '',
-  teachingArea: '',
-  preferredProgram: 'EduLink – Career Connection Platform',
-  motivation: ''
-};
-
-const blankPartner = {
-  organizationName: '',
-  contactPerson: '',
-  email: '',
-  phone: '',
-  organizationType: 'Public School',
-  supportNeeded: ''
+const blankLoginForm: LoginForm = {
+  username: '',
+  password: ''
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabId>('home');
+  const [activeTab, setActiveTab] = useState<TabId>(() => tabFromPath(window.location.pathname));
+  const [historyIndex, setHistoryIndex] = useState<number>(() =>
+    typeof window.history.state?.appIndex === 'number' ? window.history.state.appIndex : 0
+  );
+  const [maxHistoryIndex, setMaxHistoryIndex] = useState(historyIndex);
   const [candidateForm, setCandidateForm] = useState(blankCandidate);
   const [partnerForm, setPartnerForm] = useState(blankPartner);
+  const [registerMode, setRegisterMode] = useState<RegistrationMode>('graduate');
   const [candidates, setCandidates] = useState<CandidateApplication[]>(() =>
     readFromStorage<CandidateApplication[]>(candidateKey, [])
   );
   const [partners, setPartners] = useState<PartnerRequest[]>(() => readFromStorage<PartnerRequest[]>(partnerKey, []));
+  const [accounts, setAccounts] = useState<UserAccount[]>(() =>
+    seedDefaultAdmin(readFromStorage<UserAccount[]>(accountKey, []))
+  );
+  const [session, setSession] = useState<AuthSession | null>(() => readFromStorage<AuthSession | null>(sessionKey, null));
+  const [showWelcome, setShowWelcome] = useState<boolean>(() => !readFromStorage<AuthSession | null>(sessionKey, null));
+  const [loginForm, setLoginForm] = useState<LoginForm>(blankLoginForm);
+  const [loginError, setLoginError] = useState('');
   const [message, setMessage] = useState('');
-  const [adminCode, setAdminCode] = useState('');
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => readFromStorage<boolean>(adminAuthKey, false));
-  const [adminError, setAdminError] = useState('');
+  const [accessNoticeShown, setAccessNoticeShown] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState<LanguageCode>(() =>
+    normalizeLanguage(readFromStorage<string>(languageKey, 'en'))
+  );
+  const t = useMemo(() => createTranslator(selectedLanguage), [selectedLanguage]);
+
+  const currentAccount = useMemo(() => {
+    if (session?.mode !== 'account') {
+      return null;
+    }
+
+    return accounts.find((account) => account.id === session.accountId) ?? null;
+  }, [accounts, session]);
+
+  const viewerRole: ViewerRole = currentAccount?.role ?? 'visitor';
+  const isAdmin = currentAccount?.role === 'admin';
+  const isDefaultAdmin = currentAccount?.role === 'admin' && currentAccount.adminRole === 'default_admin';
 
   useEffect(() => writeToStorage(candidateKey, candidates), [candidates]);
   useEffect(() => writeToStorage(partnerKey, partners), [partners]);
-  useEffect(() => writeToStorage(adminAuthKey, isAdmin), [isAdmin]);
+  useEffect(() => writeToStorage(accountKey, accounts), [accounts]);
+  useEffect(() => writeToStorage(sessionKey, session), [session]);
+  useEffect(() => writeToStorage(languageKey, selectedLanguage), [selectedLanguage]);
+  useEffect(() => {
+    document.documentElement.lang = languageToHtmlLang(selectedLanguage);
+  }, [selectedLanguage]);
+  useEffect(() => {
+    if (session?.mode === 'account' && !currentAccount) {
+      setSession(null);
+      setShowWelcome(true);
+    }
+  }, [currentAccount, session]);
+  useEffect(() => {
+    if (accessNoticeShown || showWelcome || message || !session) {
+      return;
+    }
+
+    if (session.mode === 'visitor') {
+      setAccessNoticeShown(true);
+      setMessage(t('messages.visitor'));
+      return;
+    }
+
+    if (currentAccount) {
+      setAccessNoticeShown(true);
+      setMessage(t('messages.loggedInAs', { label: formatAccountLabel(currentAccount, t) }));
+    }
+  }, [accessNoticeShown, currentAccount, message, session, showWelcome, t]);
+  useEffect(() => {
+    if (!isDefaultAdmin || activeTab === 'portal' || activeTab === 'dashboard') {
+      return;
+    }
+
+    window.history.replaceState({ appIndex: historyIndex, tab: 'portal' }, '', routeForTab('portal'));
+    setActiveTab('portal');
+  }, [activeTab, historyIndex, isDefaultAdmin]);
+  useEffect(() => {
+    const currentIndex = typeof window.history.state?.appIndex === 'number'
+      ? window.history.state.appIndex
+      : historyIndex;
+    const currentTab = tabFromPath(window.location.pathname);
+
+    if (!isKnownRoute(window.location.pathname)) {
+      window.history.replaceState({ appIndex: currentIndex, tab: 'home' }, '', routeForTab('home'));
+      setActiveTab('home');
+      return;
+    }
+
+    window.history.replaceState({ appIndex: currentIndex, tab: currentTab }, '', routeForTab(currentTab));
+  }, []);
+  useEffect(() => {
+    function handlePopState(event: PopStateEvent) {
+      const nextTab = tabFromPath(window.location.pathname);
+      const nextIndex = typeof event.state?.appIndex === 'number' ? event.state.appIndex : 0;
+
+      setActiveTab(nextTab);
+      setHistoryIndex(nextIndex);
+      setMaxHistoryIndex((currentMax) => Math.max(currentMax, nextIndex));
+    }
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const dashboard = useMemo(() => {
     const openOpportunities = opportunities.filter((item) => item.status === 'Open').length;
     return [
-      { label: 'Candidate Applications', value: candidates.length.toString() },
-      { label: 'Partner Requests', value: partners.length.toString() },
-      { label: 'Open Opportunities', value: openOpportunities.toString() },
-      { label: 'Active Programs', value: programs.length.toString() }
+      { label: t('dashboard.metric.candidates'), value: candidates.length.toString() },
+      { label: t('dashboard.metric.partners'), value: partners.length.toString() },
+      { label: t('dashboard.metric.accounts'), value: accounts.length.toString() },
+      { label: t('dashboard.metric.openOpportunities'), value: openOpportunities.toString() },
+      { label: t('dashboard.metric.activePrograms'), value: programs.length.toString() }
     ];
-  }, [candidates.length, partners.length]);
+  }, [accounts.length, candidates.length, partners.length, t]);
 
-  function submitCandidate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const application: CandidateApplication = {
-      id: makeId('candidate'),
-      ...candidateForm,
-      createdAt: new Date().toISOString()
-    };
-    setCandidates((current) => [application, ...current]);
-    setCandidateForm(blankCandidate);
-    setMessage('Candidate application submitted successfully. The EduCareer team will review it and contact you.');
-    setActiveTab('home');
+  const canGoBack = historyIndex > 0;
+  const canGoForward = historyIndex < maxHistoryIndex;
+
+  function navigateTo(tab: TabId) {
+    const targetTab = isDefaultAdmin && tab !== 'portal' && tab !== 'dashboard' ? 'portal' : tab;
+
+    if (targetTab === activeTab) return;
+
+    const nextIndex = historyIndex + 1;
+
+    window.history.pushState({ appIndex: nextIndex, tab: targetTab }, '', routeForTab(targetTab));
+    setHistoryIndex(nextIndex);
+    setMaxHistoryIndex(nextIndex);
+    setActiveTab(targetTab);
   }
 
-  function submitPartner(event: FormEvent<HTMLFormElement>) {
+  function goBack() {
+    if (!canGoBack) return;
+    window.history.back();
+  }
+
+  function goForward() {
+    if (!canGoForward) return;
+    window.history.forward();
+  }
+
+  function startRegistration(mode: RegistrationMode) {
+    setRegisterMode(mode);
+    setShowWelcome(false);
+    setSession((currentSession) => currentSession ?? { mode: 'visitor' });
+    navigateTo('register');
+  }
+
+  function continueAsVisitor() {
+    setSession({ mode: 'visitor' });
+    setShowWelcome(false);
+    setLoginError('');
+    setAccessNoticeShown(true);
+    setMessage(t('messages.visitor'));
+  }
+
+  function openLogin() {
+    setShowWelcome(true);
+    setLoginError('');
+  }
+
+  function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const request: PartnerRequest = {
-      id: makeId('partner'),
-      ...partnerForm,
-      createdAt: new Date().toISOString()
-    };
-    setPartners((current) => [request, ...current]);
-    setPartnerForm(blankPartner);
-    setMessage('Partner request submitted successfully. The EduCareer team will review it and contact your organization.');
-    setActiveTab('home');
+    const result = authenticateAccount(accounts, loginForm);
+
+    if (!result.account) {
+      setLoginError(result.error ?? t('messages.invalidLogin'));
+      return;
+    }
+
+    setSession(sessionForAccount(result.account));
+    setLoginForm(blankLoginForm);
+    setLoginError('');
+    setShowWelcome(false);
+    setAccessNoticeShown(true);
+    setMessage(t('messages.welcomeBack', { name: result.account.displayName }));
+    navigateTo('portal');
   }
 
   function submitAdminLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const result = authenticateAccount(accounts, loginForm);
 
-    if (adminCode === adminAccessCode) {
-      setIsAdmin(true);
-      setAdminCode('');
-      setAdminError('');
-      setMessage('Admin access granted.');
-      setActiveTab('dashboard');
+    if (!result.account || result.account.role !== 'admin') {
+      setLoginError(t('messages.invalidAdminLogin'));
       return;
     }
 
-    setAdminError('Invalid admin access code.');
+    setSession(sessionForAccount(result.account));
+    setLoginForm(blankLoginForm);
+    setLoginError('');
+    setShowWelcome(false);
+    setAccessNoticeShown(true);
+    setMessage(t('messages.adminAccess'));
+    navigateTo('portal');
   }
 
-  function logoutAdmin() {
-    setIsAdmin(false);
-    setAdminCode('');
-    setAdminError('');
-    setMessage('Admin session closed.');
-    setActiveTab('home');
+  function logout() {
+    setSession(null);
+    setLoginForm(blankLoginForm);
+    setLoginError('');
+    setShowWelcome(true);
+    setAccessNoticeShown(false);
+    setMessage(t('messages.sessionClosed'));
+    navigateTo('home');
+  }
+
+  function submitCandidate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const { password, ...candidateProfile } = candidateForm;
+    const result = createAccount(accounts, {
+      role: 'graduate',
+      username: candidateForm.username,
+      password,
+      displayName: candidateForm.fullName,
+      email: candidateForm.email,
+      phone: candidateForm.phone
+    });
+
+    if (!result.account || !result.accounts) {
+      setMessage(result.error ?? t('messages.unableGraduate'));
+      return;
+    }
+
+    const application: CandidateApplication = {
+      id: makeId('candidate'),
+      ...candidateProfile,
+      username: result.account.username,
+      createdAt: new Date().toISOString()
+    };
+    setAccounts(result.accounts);
+    setSession(sessionForAccount(result.account));
+    setCandidates((current) => [application, ...current]);
+    setCandidateForm(blankCandidate);
+    setShowWelcome(false);
+    setAccessNoticeShown(true);
+    setMessage(t('messages.graduateCreated'));
+    navigateTo('portal');
+  }
+
+  function submitPartner(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const { password, ...partnerProfile } = partnerForm;
+    const result = createAccount(accounts, {
+      role: 'partner',
+      username: partnerForm.username,
+      password,
+      displayName: partnerForm.organizationName,
+      email: partnerForm.email,
+      phone: partnerForm.phone
+    });
+
+    if (!result.account || !result.accounts) {
+      setMessage(result.error ?? t('messages.unablePartner'));
+      return;
+    }
+
+    const request: PartnerRequest = {
+      id: makeId('partner'),
+      ...partnerProfile,
+      username: result.account.username,
+      createdAt: new Date().toISOString()
+    };
+    setAccounts(result.accounts);
+    setSession(sessionForAccount(result.account));
+    setPartners((current) => [request, ...current]);
+    setPartnerForm(blankPartner);
+    setShowWelcome(false);
+    setAccessNoticeShown(true);
+    setMessage(t('messages.partnerCreated'));
+    navigateTo('portal');
+  }
+
+  function applyForOpportunity(opportunity: Opportunity) {
+    if (opportunity.status === 'Closed') {
+      return;
+    }
+
+    if (viewerRole === 'visitor') {
+      setRegisterMode('graduate');
+      setMessage(t('messages.createGraduateFirst'));
+      navigateTo('register');
+      return;
+    }
+
+    if (viewerRole !== 'graduate') {
+      setMessage(t('messages.graduateOnly'));
+      return;
+    }
+
+    setMessage(t('messages.applicationIntent', { title: opportunity.title }));
+  }
+
+  function createAdminAccount(draft: AdminAccountDraft) {
+    if (!isDefaultAdmin) {
+      setMessage(t('messages.defaultAdminOnlyCreate'));
+      return;
+    }
+
+    const result = createAccount(accounts, {
+      role: 'admin',
+      username: draft.username,
+      password: draft.password,
+      displayName: draft.displayName,
+      email: draft.email,
+      phone: draft.phone,
+      adminRole: draft.adminRole
+    });
+
+    if (!result.account || !result.accounts) {
+      setMessage(result.error ?? t('messages.unableAdmin'));
+      return;
+    }
+
+    setAccounts(result.accounts);
+    setMessage(t('messages.adminCreated', {
+      name: result.account.displayName,
+      role: formatAdminRole(result.account.adminRole as AdminRole, t)
+    }));
+  }
+
+  function updateAccount(accountId: string, patch: AccountUpdatePatch) {
+    if (!isDefaultAdmin) {
+      setMessage(t('messages.defaultAdminOnlyEdit'));
+      return;
+    }
+
+    if (accountId === currentAccount?.id && patch.status !== 'active') {
+      setMessage(t('messages.defaultMustStayActive'));
+      return;
+    }
+
+    setAccounts((currentAccounts) => currentAccounts.map((account) => {
+      if (account.id !== accountId) {
+        return account;
+      }
+
+      return {
+        ...account,
+        displayName: patch.displayName,
+        email: patch.email,
+        phone: patch.phone,
+        status: account.id === 'admin-default' ? 'active' : patch.status,
+        adminRole: account.id === 'admin-default' ? 'default_admin' : patch.adminRole
+      };
+    }));
+    setMessage(t('messages.accountUpdated'));
+  }
+
+  function recoverAccount(accountId: string) {
+    if (!isDefaultAdmin) {
+      setMessage(t('messages.defaultAdminOnlyRecover'));
+      return;
+    }
+
+    setAccounts((currentAccounts) => currentAccounts.map((account) => (
+      account.id === accountId ? { ...account, status: 'active' } : account
+    )));
+    setMessage(t('messages.accountRecovered'));
+  }
+
+  function blockAccount(accountId: string) {
+    if (!isDefaultAdmin) {
+      setMessage(t('messages.defaultAdminOnlyBlock'));
+      return;
+    }
+
+    if (accountId === currentAccount?.id || accountId === 'admin-default') {
+      setMessage(t('messages.defaultCannotBlock'));
+      return;
+    }
+
+    setAccounts((currentAccounts) => currentAccounts.map((account) => (
+      account.id === accountId ? { ...account, status: 'disabled' } : account
+    )));
+    setMessage(t('messages.accountBlocked'));
+  }
+
+  function deleteAccount(accountId: string) {
+    if (!isDefaultAdmin) {
+      setMessage(t('messages.defaultAdminOnlyDelete'));
+      return;
+    }
+
+    if (accountId === currentAccount?.id || accountId === 'admin-default') {
+      setMessage(t('messages.defaultCannotDelete'));
+      return;
+    }
+
+    const shouldDelete = window.confirm(t('messages.confirmDelete'));
+    if (!shouldDelete) {
+      return;
+    }
+
+    setAccounts((currentAccounts) => currentAccounts.filter((account) => account.id !== accountId));
+    setMessage(t('messages.accountDeleted'));
   }
 
   return (
-    <div className="app-shell">
-      <header className="site-header">
-        <div className="brand-block">
-          <div className="brand-mark">EC</div>
-          <div>
-            <h1>EduCareer</h1>
-            <p>Empowering Future Educators</p>
-          </div>
-        </div>
+    <I18nProvider language={selectedLanguage}>
+      <AppLayout
+        activeTab={activeTab}
+        selectedLanguage={selectedLanguage}
+        canGoBack={canGoBack}
+        canGoForward={canGoForward}
+        viewerRole={viewerRole}
+        accountLabel={currentAccount ? formatAccountLabel(currentAccount, t) : t('role.visitor')}
+        adminPortalOnly={isDefaultAdmin}
+        onNavigate={navigateTo}
+        onLanguageChange={setSelectedLanguage}
+        onBack={goBack}
+        onForward={goForward}
+        onOpenLogin={openLogin}
+        onLogout={logout}
+      >
+        <Notice message={message} onDismiss={() => setMessage('')} />
 
-        <nav className="nav-tabs" aria-label="Main navigation">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              className={activeTab === tab.id ? 'active' : ''}
-              onClick={() => setActiveTab(tab.id)}
-              type="button"
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </header>
-
-      <main>
-        {message && (
-          <div className="notice" role="status">
-            <span>{message}</span>
-            <button type="button" onClick={() => setMessage('')}>Dismiss</button>
-          </div>
+        {showWelcome && (
+          <WelcomeDialog
+            loginForm={loginForm}
+            loginError={loginError}
+            onLoginFormChange={setLoginForm}
+            onLogin={submitLogin}
+            onContinueAsVisitor={continueAsVisitor}
+            onStartRegistration={startRegistration}
+          />
         )}
 
-        {activeTab === 'home' && <HomeSection onNavigate={setActiveTab} />}
-        {activeTab === 'about' && <AboutSection onNavigate={setActiveTab} />}
-        {activeTab === 'programs' && <ProgramsSection />}
-        {activeTab === 'opportunities' && <OpportunitiesSection onNavigate={setActiveTab} />}
+        {activeTab === 'home' && <HomePage onNavigate={navigateTo} onStartRegistration={startRegistration} />}
+        {activeTab === 'about' && <AboutPage onNavigate={navigateTo} />}
+        {activeTab === 'programs' && <ProgramsPage />}
+        {activeTab === 'opportunities' && (
+          <OpportunitiesPage
+            viewerRole={viewerRole}
+            onNavigate={navigateTo}
+            onApplyOpportunity={applyForOpportunity}
+          />
+        )}
         {activeTab === 'register' && (
-          <CandidateForm form={candidateForm} setForm={setCandidateForm} onSubmit={submitCandidate} />
+          <RegisterPage
+            mode={registerMode}
+            candidateForm={candidateForm}
+            partnerForm={partnerForm}
+            setMode={setRegisterMode}
+            setCandidateForm={setCandidateForm}
+            setPartnerForm={setPartnerForm}
+            onCandidateSubmit={submitCandidate}
+            onPartnerSubmit={submitPartner}
+          />
         )}
-        {activeTab === 'partners' && <PartnerForm form={partnerForm} setForm={setPartnerForm} onSubmit={submitPartner} />}
-        {activeTab === 'contact' && <ContactSection onNavigate={setActiveTab} />}
+        {activeTab === 'partners' && (
+          <PartnerFormPage form={partnerForm} setForm={setPartnerForm} onSubmit={submitPartner} />
+        )}
+        {activeTab === 'contact' && <ContactPage onNavigate={navigateTo} />}
+        {activeTab === 'portal' && (
+          <PortalPage
+            account={currentAccount}
+            accounts={accounts}
+            onNavigate={navigateTo}
+            onOpenLogin={openLogin}
+            onCreateAdminAccount={createAdminAccount}
+            onUpdateAccount={updateAccount}
+            onRecoverAccount={recoverAccount}
+            onBlockAccount={blockAccount}
+            onDeleteAccount={deleteAccount}
+          />
+        )}
         {activeTab === 'dashboard' && (
           isAdmin ? (
-            <DashboardSection stats={dashboard} candidates={candidates} partners={partners} onLogout={logoutAdmin} />
+            <DashboardPage
+              stats={dashboard}
+              candidates={candidates}
+              partners={partners}
+              currentAdmin={currentAccount}
+            />
           ) : (
-            <AdminLoginSection
-              adminCode={adminCode}
-              setAdminCode={setAdminCode}
-              adminError={adminError}
+            <AdminLoginPage
+              adminUsername={loginForm.username}
+              adminCode={loginForm.password}
+              adminError={loginError}
+              setAdminUsername={(username) => setLoginForm((current) => ({ ...current, username }))}
+              setAdminCode={(password) => setLoginForm((current) => ({ ...current, password }))}
               onSubmit={submitAdminLogin}
             />
           )
         )}
-      </main>
-
-      <footer className="footer">
-        <div>
-          <strong>EduCareer</strong>
-          <p>Connecting academic preparation with meaningful teaching careers.</p>
-        </div>
-        <div>
-          <p>Email: <a href={`mailto:${contact.email}`}>{contact.email}</a></p>
-          <p>Phone/WhatsApp: <a href={`tel:${contact.phone.replace(/\s/g, '')}`}>{contact.phone}</a></p>
-          <p>{contact.address}</p>
-          <button className="secondary" type="button" onClick={() => setActiveTab('dashboard')}>
-            {isAdmin ? 'Admin Dashboard' : 'Admin Access'}
-          </button>
-        </div>
-      </footer>
-    </div>
-  );
-}
-
-function HomeSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  return (
-    <section className="section-stack">
-      <div className="hero-grid">
-        <div className="hero-card">
-          <p className="eyebrow">Career bridge for educators</p>
-          <h2>Helping teacher trainees move from academic study to sustainable employment.</h2>
-          <p>
-            EduCareer connects teacher training institutions, graduates, public schools, private schools, and local employers so that every trained educator can gain practical classroom experience and access meaningful career paths.
-          </p>
-          <div className="action-row">
-            <button type="button" onClick={() => onNavigate('register')}>Register as Graduate</button>
-            <button className="secondary" type="button" onClick={() => onNavigate('partners')}>Become a Partner</button>
-            <button className="secondary" type="button" onClick={() => onNavigate('contact')}>Contact EduCareer</button>
-          </div>
-        </div>
-
-        <div className="impact-card mission-vision-card">
-          <p className="eyebrow">Mission & Vision</p>
-          <div className="mini-statement">
-            <strong>Vision</strong>
-            <p>
-              To cultivate a strong network of qualified, motivated, and empowered educators who drive the advancement of education in Sofala Province and beyond.
-            </p>
-          </div>
-
-          <div className="mini-statement">
-            <strong>Mission</strong>
-            <p>
-              To connect aspiring educators with employers, professional development, mentorship opportunities, and hands-on school engagement.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="metric-grid">
-        {metrics.map((metric) => (
-          <article className="metric-card" key={metric.label}>
-            <strong>{metric.value}</strong>
-            <span>{metric.label}</span>
-            <p>{metric.helper}</p>
-          </article>
-        ))}
-      </div>
-
-      <article className="content-card gallery-testimonial-frame">
-        <div className="section-heading split-heading">
-          <div>
-            <p className="eyebrow">Community in Action</p>
-            <h3>Activity Gallery & Testimonials</h3>
-            <p className="muted">
-              This frame will showcase EduCareer workshops, school placements, mentoring sessions, seminars, and voices from graduates and partner schools.
-            </p>
-          </div>
-          <button className="secondary" type="button" onClick={() => onNavigate('contact')}>Share an Activity</button>
-        </div>
-
-        <div className="gallery-grid">
-          <div className="gallery-tile">
-            <span>📚</span>
-            <strong>Professional Growth Seminars</strong>
-            <p>Photos from classroom management, digital pedagogy, and job-readiness sessions.</p>
-          </div>
-          <div className="gallery-tile">
-            <span>🏫</span>
-            <strong>School Placements</strong>
-            <p>Moments from TeachReady internships and assistant teacher placements.</p>
-          </div>
-          <div className="gallery-tile">
-            <span>🤝</span>
-            <strong>Mentorship Sessions</strong>
-            <p>Highlights from EduMentor meetings between experienced educators and new graduates.</p>
-          </div>
-        </div>
-
-        <div className="testimonial-grid">
-          <blockquote className="testimonial-card">
-            “EduCareer can help young teachers enter classrooms with confidence, guidance, and a clearer professional path.”
-            <cite>Graduate teacher testimonial</cite>
-          </blockquote>
-          <blockquote className="testimonial-card">
-            “Partner schools benefit when motivated trainees support learning and reduce pressure in large classrooms.”
-            <cite>Partner school testimonial</cite>
-          </blockquote>
-        </div>
-      </article>
-    </section>
-  );
-}
-
-function AboutSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  return (
-    <section className="section-stack">
-      <div className="section-heading">
-        <p className="eyebrow">About EduCareer</p>
-        <h2>A professional bridge between teacher training and meaningful education employment.</h2>
-        <p className="muted">
-          EduCareer is a non-profit association based in Sofala Province, Mozambique. It supports postgraduate students and teacher trainees as they move from academic preparation into practical classroom experience, mentorship, and sustainable career opportunities.
-        </p>
-      </div>
-
-      <div className="about-layout">
-        <article className="content-card about-wide">
-          <h3>Organization Overview</h3>
-          <p>
-            EduCareer connects teacher training institutions, graduates, public schools, private schools, local employers, and education partners so that trained educators can access structured professional pathways.
-          </p>
-          <p>
-            The association responds to a practical challenge in the education sector: many qualified or nearly qualified educators need field experience, while schools need motivated classroom support.
-          </p>
-        </article>
-
-        <article className="content-card">
-          <h3>Strategic Objectives</h3>
-          <div className="objective-list">
-            {objectives.map((objective, index) => (
-              <div key={objective} className="objective-item">
-                <span>{index + 1}</span>
-                <p>{objective}</p>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="content-card">
-          <h3>Target Beneficiaries</h3>
-          <div className="pill-row">
-            {beneficiaries.map((beneficiary) => <span key={beneficiary}>{beneficiary}</span>)}
-          </div>
-        </article>
-
-        <article className="content-card">
-          <h3>Governance</h3>
-          <p>
-            EduCareer is led by a Board of Directors made up of education professionals, representatives from training institutions, and community leaders.
-          </p>
-          <p>
-            Day-to-day operations are coordinated by an Executive Director, Program Coordinator, Partnerships and Outreach Officer, and Administrative Assistant.
-          </p>
-        </article>
-
-        <article className="content-card">
-          <h3>Funding Sources</h3>
-          <ul>
-            <li>Education-focused NGO grants.</li>
-            <li>Partnerships with universities and teacher training institutions.</li>
-            <li>Local fundraising initiatives and community sponsorships.</li>
-            <li>Government and donor-funded education programs.</li>
-          </ul>
-        </article>
-
-        <article className="content-card about-wide">
-          <h3>Expected Impact</h3>
-          <ul>
-            <li>Higher employment rates for graduate teachers in Sofala Province.</li>
-            <li>Reduced student–teacher ratios in participating schools, especially where classroom pressure is high.</li>
-            <li>Stronger collaboration between academic institutions and the education labour market.</li>
-            <li>Improved teaching quality in public schools through fresh, motivated educators.</li>
-            <li>Better classroom readiness and confidence among teacher trainees.</li>
-          </ul>
-          <div className="action-row">
-            <button type="button" onClick={() => onNavigate('programs')}>Explore Programs</button>
-            <button className="secondary" type="button" onClick={() => onNavigate('register')}>Register as Graduate</button>
-            <button className="secondary" type="button" onClick={() => onNavigate('partners')}>Become a Partner</button>
-          </div>
-        </article>
-      </div>
-    </section>
-  );
-}
-
-function ContactSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  return (
-    <section className="form-layout">
-      <div className="form-intro">
-        <p className="eyebrow">Contact EduCareer</p>
-        <h2>Let us connect educators, schools, and partners.</h2>
-        <p>
-          Use these contact details for graduate registration, school partnerships, mentorship collaboration, seminars, and institutional support.
-        </p>
-        <div className="action-row">
-          <button type="button" onClick={() => onNavigate('register')}>Graduate Registration</button>
-          <button className="secondary" type="button" onClick={() => onNavigate('partners')}>Partner Request</button>
-        </div>
-      </div>
-
-      <div className="section-stack">
-        <article className="content-card">
-          <h3>Contact Information</h3>
-          <p>Email: <a href={`mailto:${contact.email}`}>{contact.email}</a></p>
-          <p>Phone: <a href={`tel:${contact.phone.replace(/\s/g, '')}`}>{contact.phone}</a></p>
-          <p>WhatsApp: <a href={`https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`}>{contact.whatsapp}</a></p>
-          <p>Address: {contact.address}</p>
-        </article>
-
-        <article className="content-card">
-          <h3>Who Should Contact Us?</h3>
-          <ul>
-            <li>Graduate teachers looking for career opportunities.</li>
-            <li>Trainee teachers seeking practical classroom experience.</li>
-            <li>Public or private schools needing motivated educators.</li>
-            <li>Universities, training institutes, NGOs, and donor programs seeking education partnerships.</li>
-          </ul>
-        </article>
-
-        <article className="content-card">
-          <h3>Recommended Next Step</h3>
-          <p>
-            Graduates should submit the registration form. Schools and institutions should submit the partner request form. The EduCareer team can then review each request from the Admin Dashboard.
-          </p>
-        </article>
-      </div>
-    </section>
-  );
-}
-
-function ProgramsSection() {
-  return (
-    <section className="section-stack">
-      <div className="section-heading">
-        <p className="eyebrow">Core Programs</p>
-        <h2>Four programs that move educators from preparation to practice.</h2>
-      </div>
-      <div className="program-grid">
-        {programs.map((program) => (
-          <article className="program-card" key={program.id}>
-            <p className="eyebrow">{program.tagline}</p>
-            <h3>{program.name}</h3>
-            <p>{program.description}</p>
-            <ul>
-              {program.activities.map((activity) => <li key={activity}>{activity}</li>)}
-            </ul>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function OpportunitiesSection({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  return (
-    <section className="section-stack">
-      <div className="section-heading split-heading">
-        <div>
-          <p className="eyebrow">EduLink Opportunities</p>
-          <h2>Current career, internship, mentorship, and seminar opportunities.</h2>
-        </div>
-        <button type="button" onClick={() => onNavigate('register')}>Apply as Candidate</button>
-      </div>
-      <div className="opportunity-list">
-        {opportunities.map((opportunity) => (
-          <article className="opportunity-card" key={opportunity.id}>
-            <div>
-              <span className={`status status-${opportunity.status.toLowerCase()}`}>{opportunity.status}</span>
-              <h3>{opportunity.title}</h3>
-              <p>{opportunity.institution} · {opportunity.location}</p>
-            </div>
-            <div className="opportunity-meta">
-              <span>{opportunity.type}</span>
-              <span>Deadline: {new Date(opportunity.deadline).toLocaleDateString()}</span>
-            </div>
-            <ul>
-              {opportunity.requirements.map((requirement) => <li key={requirement}>{requirement}</li>)}
-            </ul>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function CandidateForm({
-  form,
-  setForm,
-  onSubmit
-}: {
-  form: typeof blankCandidate;
-  setForm: (form: typeof blankCandidate) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  return (
-    <section className="form-layout">
-      <div className="form-intro">
-        <p className="eyebrow">Graduate Registration</p>
-        <h2>Create a candidate profile for career matching.</h2>
-        <p>
-          This form collects essential information from postgraduate students and teacher trainees so EduCareer can match them with placements, internships, mentorship, and seminars.
-        </p>
-      </div>
-      <form className="form-card" onSubmit={onSubmit}>
-        <label>
-          Full name
-          <input required value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} />
-        </label>
-        <div className="form-grid">
-          <label>
-            Email
-            <input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-          </label>
-          <label>
-            Phone
-            <input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
-          </label>
-        </div>
-        <div className="form-grid">
-          <label>
-            Province
-            <input required value={form.province} onChange={(event) => setForm({ ...form, province: event.target.value })} />
-          </label>
-          <label>
-            Training institution
-            <input required value={form.institution} onChange={(event) => setForm({ ...form, institution: event.target.value })} />
-          </label>
-        </div>
-        <div className="form-grid">
-          <label>
-            Qualification
-            <input required value={form.qualification} onChange={(event) => setForm({ ...form, qualification: event.target.value })} />
-          </label>
-          <label>
-            Teaching area
-            <input required value={form.teachingArea} onChange={(event) => setForm({ ...form, teachingArea: event.target.value })} />
-          </label>
-        </div>
-        <label>
-          Preferred program
-          <select value={form.preferredProgram} onChange={(event) => setForm({ ...form, preferredProgram: event.target.value })}>
-            {programs.map((program) => <option key={program.id}>{program.name}</option>)}
-          </select>
-        </label>
-        <label>
-          Motivation and career goals
-          <textarea required rows={5} value={form.motivation} onChange={(event) => setForm({ ...form, motivation: event.target.value })} />
-        </label>
-        <button type="submit">Submit Application</button>
-      </form>
-    </section>
-  );
-}
-
-function PartnerForm({
-  form,
-  setForm,
-  onSubmit
-}: {
-  form: typeof blankPartner;
-  setForm: (form: typeof blankPartner) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  return (
-    <section className="form-layout">
-      <div className="form-intro">
-        <p className="eyebrow">Partnership Request</p>
-        <h2>Register a school, institution, or education partner.</h2>
-        <p>
-          Partner organizations can request assistant teachers, internship candidates, practice teachers, seminars, or mentorship collaboration.
-        </p>
-      </div>
-      <form className="form-card" onSubmit={onSubmit}>
-        <label>
-          Organization name
-          <input required value={form.organizationName} onChange={(event) => setForm({ ...form, organizationName: event.target.value })} />
-        </label>
-        <div className="form-grid">
-          <label>
-            Contact person
-            <input required value={form.contactPerson} onChange={(event) => setForm({ ...form, contactPerson: event.target.value })} />
-          </label>
-          <label>
-            Organization type
-            <select value={form.organizationType} onChange={(event) => setForm({ ...form, organizationType: event.target.value })}>
-              <option>Public School</option>
-              <option>Private School</option>
-              <option>Teacher Training Institute</option>
-              <option>University</option>
-              <option>NGO / Donor Program</option>
-              <option>Education Authority</option>
-            </select>
-          </label>
-        </div>
-        <div className="form-grid">
-          <label>
-            Email
-            <input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-          </label>
-          <label>
-            Phone
-            <input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
-          </label>
-        </div>
-        <label>
-          What support or collaboration is needed?
-          <textarea required rows={5} value={form.supportNeeded} onChange={(event) => setForm({ ...form, supportNeeded: event.target.value })} />
-        </label>
-        <button type="submit">Submit Partner Request</button>
-      </form>
-    </section>
-  );
-}
-
-function AdminLoginSection({
-  adminCode,
-  setAdminCode,
-  adminError,
-  onSubmit
-}: {
-  adminCode: string;
-  setAdminCode: (value: string) => void;
-  adminError: string;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  return (
-    <section className="form-layout">
-      <div className="form-intro">
-        <p className="eyebrow">Administrative Access</p>
-        <h2>Restricted area for EduCareer staff.</h2>
-        <p>
-          The Admin Dashboard is not part of the public website navigation. It is reserved for authorized users who manage applications, partner requests, and program activity.
-        </p>
-        <p className="muted">
-          This is a temporary MVP access screen. In the next phase, we should replace it with Supabase Auth.
-        </p>
-      </div>
-
-      <form className="form-card" onSubmit={onSubmit}>
-        <label>
-          Admin access code
-          <input
-            required
-            type="password"
-            value={adminCode}
-            onChange={(event) => setAdminCode(event.target.value)}
-            placeholder="Enter admin access code"
-          />
-        </label>
-
-        {adminError && <p className="muted">{adminError}</p>}
-
-        <button type="submit">Open Admin Dashboard</button>
-      </form>
-    </section>
-  );
-}
-
-function DashboardSection({
-  stats,
-  candidates,
-  partners,
-  onLogout
-}: {
-  stats: { label: string; value: string }[];
-  candidates: CandidateApplication[];
-  partners: PartnerRequest[];
-  onLogout: () => void;
-}) {
-  return (
-    <section className="section-stack">
-      <div className="section-heading split-heading">
-        <div>
-          <p className="eyebrow">Admin Dashboard</p>
-          <h2>Operational view for applications, partnerships, and program activity.</h2>
-        </div>
-        <button className="secondary" type="button" onClick={onLogout}>Logout</button>
-      </div>
-      <div className="metric-grid">
-        {stats.map((stat) => (
-          <article className="metric-card compact" key={stat.label}>
-            <strong>{stat.value}</strong>
-            <span>{stat.label}</span>
-          </article>
-        ))}
-      </div>
-      <div className="dashboard-grid">
-        <DashboardList
-          title="Candidate Applications"
-          empty="No candidate applications yet."
-          items={candidates.map((candidate) => ({
-            id: candidate.id,
-            title: candidate.fullName,
-            subtitle: `${candidate.teachingArea} · ${candidate.preferredProgram}`,
-            body: candidate.motivation,
-            meta: `${candidate.email} · ${candidate.phone}`
-          }))}
-        />
-        <DashboardList
-          title="Partner Requests"
-          empty="No partner requests yet."
-          items={partners.map((partner) => ({
-            id: partner.id,
-            title: partner.organizationName,
-            subtitle: `${partner.organizationType} · ${partner.contactPerson}`,
-            body: partner.supportNeeded,
-            meta: `${partner.email} · ${partner.phone}`
-          }))}
-        />
-      </div>
-    </section>
-  );
-}
-
-function DashboardList({
-  title,
-  empty,
-  items
-}: {
-  title: string;
-  empty: string;
-  items: { id: string; title: string; subtitle: string; body: string; meta: string }[];
-}) {
-  return (
-    <article className="content-card dashboard-list">
-      <h3>{title}</h3>
-      {items.length === 0 ? (
-        <p className="muted">{empty}</p>
-      ) : (
-        items.map((item) => (
-          <div className="dashboard-item" key={item.id}>
-            <h4>{item.title}</h4>
-            <p className="muted">{item.subtitle}</p>
-            <p>{item.body}</p>
-            <small>{item.meta}</small>
-          </div>
-        ))
-      )}
-    </article>
+      </AppLayout>
+    </I18nProvider>
   );
 }
