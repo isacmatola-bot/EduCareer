@@ -120,41 +120,81 @@ export async function signOutSupabaseAccount(): Promise<void> {
 export async function registerSupabaseAccount(input: AccountRegistrationInput): Promise<UserAccount> {
   const client = requireSupabase();
   const username = normalizeUsername(input.username);
+  const email = input.email.trim().toLowerCase();
+  const password = input.password;
+  const displayName = input.displayName.trim();
+  const phone = input.phone?.trim();
   const adminRole = input.role === 'admin' ? input.adminRole ?? 'director' : null;
 
-  const { data, error } = await client.auth.signUp({
-    email: input.email.trim(),
-    password: input.password,
+  if (username.length < 3) {
+    throw new Error('Username must contain at least 3 characters.');
+  }
+
+  if (password.length < 8) {
+    throw new Error('Password must contain at least 8 characters.');
+  }
+
+  const { data: signUpData, error: signUpError } = await client.auth.signUp({
+    email,
+    password,
     options: {
       data: {
         username,
-        display_name: input.displayName.trim(),
-        phone: input.phone?.trim() ?? '',
+        display_name: displayName,
+        phone: phone ?? '',
         role: input.role,
         admin_role: adminRole
       }
     }
   });
 
-  if (error || !data.user) {
-    throw new Error(error?.message ?? 'Unable to create this account.');
+  if (signUpError) {
+    throw new Error(signUpError.message);
+  }
+
+  let user = signUpData.user ?? null;
+  let session = signUpData.session ?? null;
+
+  if (!user || !session) {
+    const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (signInError) {
+      throw new Error(signInError.message);
+    }
+
+    user = signInData.user ?? null;
+    session = signInData.session ?? null;
+  }
+
+  if (!user || !session) {
+    throw new Error('Account was created, but no active Supabase session was returned.');
   }
 
   const account: UserAccount = {
-    id: data.user.id,
+    id: user.id,
     role: input.role,
     adminRole: adminRole ?? undefined,
     username,
     passwordHash: 'supabase-auth',
-    displayName: input.displayName.trim(),
-    email: input.email.trim(),
-    phone: input.phone?.trim(),
+    displayName,
+    email,
+    phone,
     createdAt: new Date().toISOString(),
     status: input.role === 'admin' ? 'active' : 'pending'
   };
 
-  await upsertOwnProfile(account).catch(() => undefined);
-  return account;
+  await upsertOwnProfile(account);
+
+  const profile = await fetchSupabaseProfile(user.id);
+
+  if (!profile) {
+    throw new Error('Supabase created the auth user, but the EduCareer profile was not saved.');
+  }
+
+  return profileToAccount(profile);
 }
 
 export async function insertSupabaseCandidate(application: CandidateApplication, accountId?: string): Promise<void> {
@@ -263,7 +303,7 @@ async function selectRows<T>(table: string, columns: string): Promise<T[]> {
   const { data, error } = await client.from(table).select(columns).order('created_at', { ascending: false });
 
   if (error) {
-    return [];
+    throw new Error(error.message);
   }
 
   return (data ?? []) as T[];
