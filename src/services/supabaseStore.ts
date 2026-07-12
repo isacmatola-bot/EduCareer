@@ -65,26 +65,59 @@ export async function loadSupabaseSnapshot(): Promise<SupabaseSnapshot> {
   const { data: sessionData } = await client.auth.getSession();
   const sessionUser = sessionData.session?.user ?? null;
 
-  const [profileRows, candidateRows, partnerRows] = await Promise.all([
-    selectRows<SupabaseProfileRow>('profiles', '*'),
-    selectRows<SupabaseCandidateRow>('candidates', '*'),
-    selectRows<SupabasePartnerRow>('partner_requests', '*')
-  ]);
-
-  const accounts = profileRows.map(profileToAccount);
-
-  if (sessionUser && !accounts.some((account) => account.id === sessionUser.id)) {
-    const sessionProfile = await fetchSupabaseProfile(sessionUser.id);
-    if (sessionProfile) {
-      accounts.unshift(profileToAccount(sessionProfile));
-    }
+  if (!sessionUser) {
+    return {
+      accounts: [],
+      candidates: [],
+      partners: [],
+      session: null
+    };
   }
 
+  const sessionProfile = await fetchSupabaseProfile(sessionUser.id);
+
+  if (!sessionProfile) {
+    return {
+      accounts: [],
+      candidates: [],
+      partners: [],
+      session: null
+    };
+  }
+
+  const account = profileToAccount(sessionProfile);
+  const session: AuthSession = { mode: 'account', accountId: sessionUser.id };
+
+  if (account.role === 'admin') {
+    const [profileRows, candidateRows, partnerRows] = await Promise.all([
+      selectRows<SupabaseProfileRow>('profiles', '*'),
+      selectRows<SupabaseCandidateRow>('candidates', '*'),
+      selectRows<SupabasePartnerRow>('partner_requests', '*')
+    ]);
+
+    return {
+      accounts: profileRows.map(profileToAccount),
+      candidates: candidateRows.map(candidateRowToApplication),
+      partners: partnerRows.map(partnerRowToRequest),
+      session
+    };
+  }
+
+  const [candidateRows, partnerRows] = await Promise.all([
+    account.role === 'graduate'
+      ? selectRows<SupabaseCandidateRow>('candidates', '*')
+      : Promise.resolve([] as SupabaseCandidateRow[]),
+
+    account.role === 'partner'
+      ? selectRows<SupabasePartnerRow>('partner_requests', '*')
+      : Promise.resolve([] as SupabasePartnerRow[])
+  ]);
+
   return {
-    accounts,
+    accounts: [account],
     candidates: candidateRows.map(candidateRowToApplication),
     partners: partnerRows.map(partnerRowToRequest),
-    session: sessionUser ? { mode: 'account', accountId: sessionUser.id } : null
+    session
   };
 }
 
