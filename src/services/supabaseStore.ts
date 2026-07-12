@@ -219,15 +219,9 @@ export async function registerSupabaseAccount(input: AccountRegistrationInput): 
     status: input.role === 'admin' ? 'active' : 'pending'
   };
 
-  await upsertOwnProfile(account);
+  const profile = await ensureOwnProfile(account);
 
-  const profile = await fetchSupabaseProfile(user.id);
-
-  if (!profile) {
-    throw new Error('Supabase created the auth user, but the EduCareer profile was not saved.');
-  }
-
-  return profileToAccount(profile);
+return profileToAccount(profile);
 }
 
 export async function insertSupabaseCandidate(application: CandidateApplication, accountId?: string): Promise<void> {
