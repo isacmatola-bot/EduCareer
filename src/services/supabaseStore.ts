@@ -450,3 +450,35 @@ function coerceStatus(status: string): UserAccount['status'] {
 
   return 'pending';
 }
+async function ensureOwnProfile(account: UserAccount): Promise<SupabaseProfileRow> {
+  const existingProfile = await fetchSupabaseProfile(account.id);
+
+  if (existingProfile) {
+    return existingProfile;
+  }
+
+  const client = requireSupabase();
+
+  const { error } = await client.from('profiles').insert({
+    id: account.id,
+    username: account.username,
+    email: account.email,
+    display_name: account.displayName,
+    phone: account.phone ?? null,
+    role: account.role,
+    admin_role: account.adminRole ?? null,
+    status: account.status
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const createdProfile = await fetchSupabaseProfile(account.id);
+
+  if (!createdProfile) {
+    throw new Error('Supabase created the auth user, but the EduCareer profile was not saved.');
+  }
+
+  return createdProfile;
+}
