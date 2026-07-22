@@ -361,7 +361,7 @@ export async function createSupabaseAdminAccount(input: AccountRegistrationInput
   });
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error(await readFunctionError(error, 'Unable to create this admin account.'));
   }
 
   const payload = data as { profile?: SupabaseProfileRow; error?: string };
@@ -378,7 +378,8 @@ export async function updateSupabaseAccountProfile(accountId: string, patch: Par
     body: { action: 'update', accountId, patch }
   });
   const payload = data as { error?: string } | null;
-  if (error || payload?.error) throw new Error(payload?.error ?? error?.message ?? 'Unable to update this account.');
+  if (error) throw new Error(await readFunctionError(error, 'Unable to update this account.'));
+  if (payload?.error) throw new Error(payload.error);
 }
 
 export async function deleteSupabaseAccountProfile(accountId: string): Promise<void> {
@@ -387,7 +388,30 @@ export async function deleteSupabaseAccountProfile(accountId: string): Promise<v
     body: { action: 'delete', accountId }
   });
   const payload = data as { error?: string } | null;
-  if (error || payload?.error) throw new Error(payload?.error ?? error?.message ?? 'Unable to delete this account.');
+  if (error) throw new Error(await readFunctionError(error, 'Unable to delete this account.'));
+  if (payload?.error) throw new Error(payload.error);
+}
+
+async function readFunctionError(error: unknown, fallback: string): Promise<string> {
+  if (error && typeof error === 'object' && 'context' in error) {
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      try {
+        const payload = await context.clone().json() as { error?: unknown };
+        if (typeof payload.error === 'string' && payload.error.trim() && payload.error.trim() !== '{}') {
+          return payload.error.trim();
+        }
+      } catch {
+        // Fall through to the SDK error below when the response is not JSON.
+      }
+    }
+  }
+
+  if (error instanceof Error && error.message.trim() && error.message.trim() !== '{}') {
+    return error.message.trim();
+  }
+
+  return fallback;
 }
 
 async function resolveLoginEmail(login: string): Promise<string> {

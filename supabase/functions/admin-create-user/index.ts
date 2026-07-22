@@ -84,7 +84,9 @@ Deno.serve(async (request) => {
     });
 
     if (createError || !createdUser.user) {
-      return json({ error: createError?.message ?? 'Unable to create admin account.' }, 400);
+      const message = describeError(createError, 'Unable to create admin account.');
+      console.error('admin-create-user: auth user creation failed', errorDetails(createError));
+      return json({ error: message }, 400);
     }
 
     const profile = {
@@ -105,12 +107,16 @@ Deno.serve(async (request) => {
       .single();
 
     if (profileError) {
-      return json({ error: profileError.message }, 400);
+      const message = describeError(profileError, 'Unable to save the administrative profile.');
+      console.error('admin-create-user: profile upsert failed', errorDetails(profileError));
+      await serviceClient.auth.admin.deleteUser(createdUser.user.id);
+      return json({ error: message }, 400);
     }
 
     return json({ profile: savedProfile }, 200);
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : 'Unexpected server error.' }, 500);
+    console.error('admin-create-user: unexpected failure', errorDetails(error));
+    return json({ error: describeError(error, 'Unexpected server error.') }, 500);
   }
 });
 
@@ -159,4 +165,30 @@ function json(payload: unknown, status: number) {
       'Content-Type': 'application/json'
     }
   });
+}
+
+function describeError(error: unknown, fallback: string): string {
+  if (typeof error === 'string' && error.trim() && error.trim() !== '{}') return error.trim();
+  if (error instanceof Error && error.message.trim() && error.message.trim() !== '{}') return error.message.trim();
+  if (error && typeof error === 'object') {
+    const candidate = error as Record<string, unknown>;
+    for (const key of ['message', 'error_description', 'details', 'hint', 'code']) {
+      const value = candidate[key];
+      if (typeof value === 'string' && value.trim() && value.trim() !== '{}') return value.trim();
+    }
+  }
+  return fallback;
+}
+
+function errorDetails(error: unknown): Record<string, unknown> {
+  if (!error || typeof error !== 'object') return { value: String(error) };
+  const candidate = error as Record<string, unknown>;
+  return {
+    name: candidate.name,
+    message: candidate.message,
+    status: candidate.status,
+    code: candidate.code,
+    details: candidate.details,
+    hint: candidate.hint
+  };
 }
