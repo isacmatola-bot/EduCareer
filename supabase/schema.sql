@@ -367,6 +367,21 @@ alter table public.opportunities enable row level security;
 alter table public.opportunity_applications enable row level security;
 alter table public.placements enable row level security;
 
+-- Remove policies left by earlier EduCareer schema versions. Keeping these
+-- alongside the current policies can broaden access (for example, allowing a
+-- pending user to update their own status and approve their account).
+drop policy if exists "Authenticated user can update own profile" on public.profiles;
+drop policy if exists "Authenticated users can read profiles" on public.profiles;
+drop policy if exists "Public can lookup admin login profile" on public.profiles;
+drop policy if exists "Public can resolve login usernames" on public.profiles;
+drop policy if exists "Users can insert own profile" on public.profiles;
+drop policy if exists "Users can update own profile" on public.profiles;
+drop policy if exists "Allow candidate registration" on public.candidates;
+drop policy if exists "Allow candidates read" on public.candidates;
+drop policy if exists "Allow candidates update" on public.candidates;
+drop policy if exists "Authenticated users can create candidate applications" on public.candidates;
+drop policy if exists "Authenticated users can create partner requests" on public.partner_requests;
+
 drop policy if exists "Profiles are visible to owner and admins" on public.profiles;
 create policy "Profiles are visible to owner and admins" on public.profiles
   for select to authenticated

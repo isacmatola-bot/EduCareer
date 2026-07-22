@@ -17,4 +17,10 @@ describe('Supabase authorization contract', () => {
     expect(schema).toContain('revoke update, delete on public.profiles from authenticated');
     expect(schema).not.toContain('create policy "Default admin can delete profiles"');
   });
+
+  it('removes legacy self-approval and public profile policies', () => {
+    expect(schema).toContain('drop policy if exists "Users can update own profile"');
+    expect(schema).toContain('drop policy if exists "Public can resolve login usernames"');
+    expect(schema).toContain('drop policy if exists "Allow candidates update"');
+  });
 });
