@@ -58,17 +58,54 @@ export function AppLayout({
   return (
     <div className="app-shell">
       <header className="site-header">
-        <div className="brand-block">
-          <div className="brand-mark">EC</div>
-          <div>
-            <h1>EduCareer</h1>
-            <p>{t('brand.tagline')}</p>
+        <div className="header-identity">
+          <div className="movement-controls" aria-label={t('aria.movementControls')}>
+            <button className="secondary movement-button" type="button" onClick={onBack} disabled={!canGoBack} aria-label={t('actions.back')} title={t('actions.back')}>
+              <Icon name="back" />
+            </button>
+            <button className="secondary movement-button" type="button" onClick={onForward} disabled={!canGoForward} aria-label={t('actions.forward')} title={t('actions.forward')}>
+              <Icon name="forward" />
+            </button>
           </div>
+          <div className="brand-block">
+            <div className="brand-mark">EC</div>
+            <div>
+              <h1>EduCareer</h1>
+              <p>{t('brand.tagline')}</p>
+            </div>
+          </div>
+          <span className={`session-pill session-${viewerRole}`}>{accountLabel}</span>
         </div>
 
         <div className="nav-area">
-          {!adminPortalOnly && (
-            <>
+          <div className="header-utility-row">
+            <label className="language-picker icon-control" title={t('aria.selectLanguage')}>
+              <Icon name="globe" />
+              <select
+                aria-label={t('aria.selectLanguage')}
+                value={selectedLanguage}
+                onChange={(event) => onLanguageChange(event.target.value as LanguageCode)}
+              >
+                {languages.map((language) => (
+                  <option key={language.code} value={language.code}>
+                    {language.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {viewerRole === 'visitor' ? (
+              <button className="secondary header-session-button icon-control" type="button" onClick={onOpenLogin} aria-label={t('actions.login')} title={t('actions.login')}>
+                <Icon name="login" />
+              </button>
+            ) : (
+              <button className="secondary header-session-button icon-control" type="button" onClick={onLogout} aria-label={t('actions.logout')} title={t('actions.logout')}>
+                <Icon name="logout" />
+              </button>
+            )}
+          </div>
+
+          <div className="main-menu-row">
+            {!adminPortalOnly && (
               <nav className="nav-tabs" aria-label={t('aria.mainNavigation')}>
                 {tabs.map((tab) => (
                   <a
@@ -82,51 +119,10 @@ export function AppLayout({
                     {t(`nav.${tab.id}`)}
                   </a>
                 ))}
-
-                <label className="language-picker">
-                  <Icon name="globe" />
-                  <select
-                    aria-label={t('aria.selectLanguage')}
-                    value={selectedLanguage}
-                    onChange={(event) => onLanguageChange(event.target.value as LanguageCode)}
-                  >
-                    {languages.map((language) => (
-                      <option key={language.code} value={language.code}>
-                        {language.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
               </nav>
+            )}
 
-              <div className="movement-controls" aria-label={t('aria.movementControls')}>
-                <button
-                  className="secondary movement-button"
-                  type="button"
-                  onClick={onBack}
-                  disabled={!canGoBack}
-                  aria-label={t('actions.back')}
-                  title={t('actions.back')}
-                >
-                  <Icon name="back" />
-                </button>
-                <button
-                  className="secondary movement-button"
-                  type="button"
-                  onClick={onForward}
-                  disabled={!canGoForward}
-                  aria-label={t('actions.forward')}
-                  title={t('actions.forward')}
-                >
-                  <Icon name="forward" />
-                </button>
-              </div>
-            </>
-          )}
-
-          <div className="session-controls" aria-label={t('aria.accountControls')}>
-            <span className={`session-pill session-${viewerRole}`}>{accountLabel}</span>
-            {viewerRole !== 'visitor' && (
+            {viewerRole === 'admin' && (
               <a
                 href={routeForTab('portal')}
                 className={activeTab === 'portal' ? 'session-link active' : 'session-link'}
@@ -136,17 +132,6 @@ export function AppLayout({
                 <Icon name="admin" />
                 {t('actions.portal')}
               </a>
-            )}
-            {viewerRole === 'visitor' ? (
-              <button className="secondary" type="button" onClick={onOpenLogin}>
-                <Icon name="admin" />
-                {t('actions.login')}
-              </button>
-            ) : (
-              <button className="secondary" type="button" onClick={onLogout}>
-                <Icon name="back" />
-                {t('actions.logout')}
-              </button>
             )}
           </div>
         </div>

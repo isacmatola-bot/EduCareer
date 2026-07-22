@@ -1,5 +1,5 @@
 import type { AccountRole, AdminRole, AuthSession, LoginForm, UserAccount } from '../auth';
-import type { CandidateApplication, PartnerRequest } from '../types';
+import type { CandidateApplication, Opportunity, PartnerRequest, Program } from '../types';
 import { requireSupabase } from './supabaseClient';
 
 type AccountRegistrationInput = {
@@ -10,6 +10,13 @@ type AccountRegistrationInput = {
   email: string;
   phone?: string;
   adminRole?: AdminRole;
+  candidate?: Omit<CandidateApplication, 'id' | 'username' | 'createdAt'>;
+  partner?: Omit<PartnerRequest, 'id' | 'username' | 'createdAt'>;
+};
+
+export type SupabaseRegistrationResult = {
+  account: UserAccount;
+  requiresEmailConfirmation: boolean;
 };
 
 type SupabaseProfileRow = {
@@ -53,15 +60,43 @@ type SupabasePartnerRow = {
   created_at: string;
 };
 
+type SupabaseProgramRow = {
+  id: string;
+  name: string;
+  tagline: string;
+  description: string;
+  activities: string[];
+  status: string;
+};
+
+type SupabaseOpportunityRow = {
+  id: string;
+  title: string;
+  institution: string;
+  location: string;
+  opportunity_type: string;
+  deadline: string;
+  status: string;
+  requirements: string[];
+};
+
 export type SupabaseSnapshot = {
   accounts: UserAccount[];
   candidates: CandidateApplication[];
   partners: PartnerRequest[];
+  programs: Program[];
+  opportunities: Opportunity[];
   session: AuthSession | null;
 };
 
 export async function loadSupabaseSnapshot(): Promise<SupabaseSnapshot> {
   const client = requireSupabase();
+  const [programRows, opportunityRows] = await Promise.all([
+    selectRows<SupabaseProgramRow>('programs', '*'),
+    selectRows<SupabaseOpportunityRow>('opportunities', '*')
+  ]);
+  const programs = programRows.map(programRowToProgram);
+  const opportunities = opportunityRows.map(opportunityRowToOpportunity);
   const { data: sessionData } = await client.auth.getSession();
   const sessionUser = sessionData.session?.user ?? null;
 
@@ -70,6 +105,8 @@ export async function loadSupabaseSnapshot(): Promise<SupabaseSnapshot> {
       accounts: [],
       candidates: [],
       partners: [],
+      programs,
+      opportunities,
       session: null
     };
   }
@@ -81,6 +118,8 @@ export async function loadSupabaseSnapshot(): Promise<SupabaseSnapshot> {
       accounts: [],
       candidates: [],
       partners: [],
+      programs,
+      opportunities,
       session: null
     };
   }
@@ -99,6 +138,8 @@ export async function loadSupabaseSnapshot(): Promise<SupabaseSnapshot> {
       accounts: profileRows.map(profileToAccount),
       candidates: candidateRows.map(candidateRowToApplication),
       partners: partnerRows.map(partnerRowToRequest),
+      programs,
+      opportunities,
       session
     };
   }
@@ -117,8 +158,54 @@ export async function loadSupabaseSnapshot(): Promise<SupabaseSnapshot> {
     accounts: [account],
     candidates: candidateRows.map(candidateRowToApplication),
     partners: partnerRows.map(partnerRowToRequest),
+    programs,
+    opportunities,
     session
   };
+}
+
+export async function createSupabaseProgram(program: Program): Promise<Program> {
+  const client = requireSupabase();
+  const { data, error } = await client.from('programs').insert(programToRow(program)).select('*').single();
+  if (error || !data) throw new Error(error?.message ?? 'Unable to create this program.');
+  return programRowToProgram(data as SupabaseProgramRow);
+}
+
+export async function updateSupabaseProgram(program: Program): Promise<Program> {
+  const client = requireSupabase();
+  const { data, error } = await client.from('programs').update(programToRow(program)).eq('id', program.id).select('*').single();
+  if (error || !data) throw new Error(error?.message ?? 'Unable to update this program.');
+  return programRowToProgram(data as SupabaseProgramRow);
+}
+
+export async function createSupabaseOpportunity(opportunity: Opportunity): Promise<Opportunity> {
+  const client = requireSupabase();
+  const { id: _temporaryId, ...row } = opportunityToRow(opportunity);
+  const { data, error } = await client.from('opportunities').insert(row).select('*').single();
+  if (error || !data) throw new Error(error?.message ?? 'Unable to create this opportunity.');
+  return opportunityRowToOpportunity(data as SupabaseOpportunityRow);
+}
+
+export async function updateSupabaseOpportunity(opportunity: Opportunity): Promise<Opportunity> {
+  const client = requireSupabase();
+  const { id: _id, ...row } = opportunityToRow(opportunity);
+  const { data, error } = await client.from('opportunities').update(row).eq('id', opportunity.id).select('*').single();
+  if (error || !data) throw new Error(error?.message ?? 'Unable to update this opportunity.');
+  return opportunityRowToOpportunity(data as SupabaseOpportunityRow);
+}
+
+export async function applyToSupabaseOpportunity(opportunityId: string): Promise<void> {
+  const client = requireSupabase();
+  const { data: userData, error: userError } = await client.auth.getUser();
+  if (userError || !userData.user) throw new Error('You must log in before applying.');
+
+  const { error } = await client.from('opportunity_applications').insert({
+    opportunity_id: opportunityId,
+    account_id: userData.user.id
+  });
+
+  if (error?.code === '23505') throw new Error('You have already applied for this opportunity.');
+  if (error) throw new Error(error.message);
 }
 
 export async function signInSupabaseAccount(credentials: LoginForm): Promise<UserAccount> {
@@ -150,7 +237,7 @@ export async function signOutSupabaseAccount(): Promise<void> {
   }
 }
 
-export async function registerSupabaseAccount(input: AccountRegistrationInput): Promise<UserAccount> {
+export async function registerSupabaseAccount(input: AccountRegistrationInput): Promise<SupabaseRegistrationResult> {
   const client = requireSupabase();
   const username = normalizeUsername(input.username);
   const email = input.email.trim().toLowerCase();
@@ -176,7 +263,17 @@ export async function registerSupabaseAccount(input: AccountRegistrationInput): 
         display_name: displayName,
         phone: phone ?? '',
         role: input.role,
-        admin_role: adminRole
+        admin_role: adminRole,
+        province: input.candidate?.province ?? '',
+        institution: input.candidate?.institution ?? '',
+        qualification: input.candidate?.qualification ?? '',
+        teaching_area: input.candidate?.teachingArea ?? '',
+        preferred_program: input.candidate?.preferredProgram ?? '',
+        motivation: input.candidate?.motivation ?? '',
+        organization_name: input.partner?.organizationName ?? '',
+        contact_person: input.partner?.contactPerson ?? '',
+        organization_type: input.partner?.organizationType ?? '',
+        support_needed: input.partner?.supportNeeded ?? ''
       }
     }
   });
@@ -185,25 +282,15 @@ export async function registerSupabaseAccount(input: AccountRegistrationInput): 
     throw new Error(signUpError.message);
   }
 
-  let user = signUpData.user ?? null;
-  let session = signUpData.session ?? null;
+  const user = signUpData.user ?? null;
+  const session = signUpData.session ?? null;
 
-  if (!user || !session) {
-    const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
-      email,
-      password
-    });
-
-    if (signInError) {
-      throw new Error(signInError.message);
-    }
-
-    user = signInData.user ?? null;
-    session = signInData.session ?? null;
+  if (!user) {
+    throw new Error('Supabase did not return the newly created account.');
   }
 
-  if (!user || !session) {
-    throw new Error('Account was created, but no active Supabase session was returned.');
+  if (user.identities?.length === 0) {
+    throw new Error('This email address is already registered. Confirm the existing account or log in.');
   }
 
   const account: UserAccount = {
@@ -219,9 +306,13 @@ export async function registerSupabaseAccount(input: AccountRegistrationInput): 
     status: input.role === 'admin' ? 'active' : 'pending'
   };
 
+  if (!session) {
+    return { account, requiresEmailConfirmation: true };
+  }
+
   const profile = await ensureOwnProfile(account);
 
-return profileToAccount(profile);
+  return { account: profileToAccount(profile), requiresEmailConfirmation: false };
 }
 
 export async function insertSupabaseCandidate(application: CandidateApplication, accountId?: string): Promise<void> {
@@ -283,28 +374,20 @@ export async function createSupabaseAdminAccount(input: AccountRegistrationInput
 
 export async function updateSupabaseAccountProfile(accountId: string, patch: Partial<UserAccount>): Promise<void> {
   const client = requireSupabase();
-  const payload: Record<string, string | null> = {};
-
-  if (patch.displayName !== undefined) payload.display_name = patch.displayName;
-  if (patch.email !== undefined) payload.email = patch.email;
-  if (patch.phone !== undefined) payload.phone = patch.phone ?? null;
-  if (patch.status !== undefined) payload.status = patch.status;
-  if (patch.adminRole !== undefined) payload.admin_role = patch.adminRole ?? null;
-
-  const { error } = await client.from('profiles').update(payload).eq('id', accountId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  const { data, error } = await client.functions.invoke('admin-manage-user', {
+    body: { action: 'update', accountId, patch }
+  });
+  const payload = data as { error?: string } | null;
+  if (error || payload?.error) throw new Error(payload?.error ?? error?.message ?? 'Unable to update this account.');
 }
 
 export async function deleteSupabaseAccountProfile(accountId: string): Promise<void> {
   const client = requireSupabase();
-  const { error } = await client.from('profiles').delete().eq('id', accountId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  const { data, error } = await client.functions.invoke('admin-manage-user', {
+    body: { action: 'delete', accountId }
+  });
+  const payload = data as { error?: string } | null;
+  if (error || payload?.error) throw new Error(payload?.error ?? error?.message ?? 'Unable to delete this account.');
 }
 
 async function resolveLoginEmail(login: string): Promise<string> {
@@ -345,24 +428,6 @@ async function fetchSupabaseProfile(userId: string): Promise<SupabaseProfileRow 
   }
 
   return data as SupabaseProfileRow | null;
-}
-
-async function upsertOwnProfile(account: UserAccount): Promise<void> {
-  const client = requireSupabase();
-  const { error } = await client.from('profiles').upsert({
-    id: account.id,
-    username: account.username,
-    email: account.email,
-    display_name: account.displayName,
-    phone: account.phone ?? null,
-    role: account.role,
-    admin_role: account.adminRole ?? null,
-    status: account.status
-  });
-
-  if (error) {
-    throw new Error(error.message);
-  }
 }
 
 function profileToAccount(profile: SupabaseProfileRow): UserAccount {
@@ -413,6 +478,42 @@ function partnerRowToRequest(row: SupabasePartnerRow): PartnerRequest {
   };
 }
 
+function programRowToProgram(row: SupabaseProgramRow): Program {
+  const status: Program['status'] = row.status === 'published' || row.status === 'closed' ? row.status : 'draft';
+  return { id: row.id, name: row.name, tagline: row.tagline, description: row.description, activities: row.activities ?? [], status };
+}
+
+function programToRow(program: Program) {
+  return {
+    id: program.id,
+    name: program.name,
+    tagline: program.tagline,
+    description: program.description,
+    activities: program.activities,
+    status: program.status
+  };
+}
+
+function opportunityRowToOpportunity(row: SupabaseOpportunityRow): Opportunity {
+  const allowedTypes: Opportunity['type'][] = ['Assistant Teacher', 'Internship', 'Mentorship', 'Seminar', 'Practice Teaching'];
+  const type = allowedTypes.find((item) => item === row.opportunity_type) ?? 'Internship';
+  const status: Opportunity['status'] = row.status === 'closed' ? 'Closed' : row.status === 'upcoming' ? 'Upcoming' : 'Open';
+  return { id: row.id, title: row.title, institution: row.institution, location: row.location, type, deadline: row.deadline, status, requirements: row.requirements ?? [] };
+}
+
+function opportunityToRow(opportunity: Opportunity) {
+  return {
+    id: opportunity.id,
+    title: opportunity.title,
+    institution: opportunity.institution,
+    location: opportunity.location,
+    opportunity_type: opportunity.type,
+    deadline: opportunity.deadline,
+    status: opportunity.status.toLowerCase(),
+    requirements: opportunity.requirements
+  };
+}
+
 function normalizeUsername(username: string): string {
   return username.trim().toLowerCase();
 }
@@ -450,6 +551,7 @@ function coerceStatus(status: string): UserAccount['status'] {
 
   return 'pending';
 }
+
 async function ensureOwnProfile(account: UserAccount): Promise<SupabaseProfileRow> {
   const existingProfile = await fetchSupabaseProfile(account.id);
 

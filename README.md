@@ -83,8 +83,9 @@ Depois:
 
 1. Crie um projeto Supabase.
 2. Execute `supabase/schema.sql` no SQL Editor.
-3. Crie o primeiro utilizador no Supabase Auth.
-4. Promova esse utilizador para admin:
+3. A confirmacao de e-mail pode permanecer ativa em **Authentication > Providers > Email**. O trigger `handle_new_user` guarda imediatamente o perfil e a candidatura Graduate ou pedido Partner; o utilizador apenas precisa confirmar o e-mail antes de iniciar sessao.
+4. Crie o primeiro utilizador no Supabase Auth.
+5. Promova esse utilizador para admin:
 
 ```sql
 update public.profiles
@@ -92,11 +93,12 @@ set role = 'admin', admin_role = 'default_admin', status = 'active'
 where email = 'admin@your-domain.com';
 ```
 
-5. Configure `SUPABASE_SERVICE_ROLE_KEY` apenas no ambiente seguro da Edge Function.
-6. Deploy da function:
+6. Configure `SUPABASE_SERVICE_ROLE_KEY` apenas no ambiente seguro da Edge Function.
+7. Faça deploy das funções administrativas. A segunda mantém o email sincronizado com Supabase Auth e elimina a conta Auth juntamente com o perfil:
 
 ```bash
 supabase functions deploy admin-create-user
+supabase functions deploy admin-manage-user
 ```
 
 ## Deploy na Vercel

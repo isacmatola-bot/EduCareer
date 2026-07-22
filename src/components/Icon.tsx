@@ -18,6 +18,11 @@ export type IconName =
   | 'globe'
   | 'back'
   | 'forward'
+  | 'add'
+  | 'edit'
+  | 'close'
+  | 'login'
+  | 'logout'
   | 'impact';
 
 export function Icon({ name }: { name: IconName }) {
@@ -42,6 +47,11 @@ export function Icon({ name }: { name: IconName }) {
       {name === 'globe' && <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 0c2.2 2.3 3.2 5.3 3.2 9S14.2 18.7 12 21m0-18C9.8 5.3 8.8 8.3 8.8 12s1 6.7 3.2 9M3.8 9h16.4M3.8 15h16.4" />}
       {name === 'back' && <path d="M15 6 9 12l6 6" />}
       {name === 'forward' && <path d="m9 6 6 6-6 6" />}
+      {name === 'add' && <path d="M12 5v14M5 12h14" />}
+      {name === 'edit' && <path d="m4 20 4.2-1 10.6-10.6a2.1 2.1 0 0 0-3-3L5.2 16 4 20Zm10.4-13.2 3 3" />}
+      {name === 'close' && <path d="M6 6l12 12M18 6 6 18" />}
+      {name === 'login' && <path d="M14 4h5a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-5M10 8l4 4-4 4m4-4H4" />}
+      {name === 'logout' && <path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h5m4-12 4 4-4 4m4-4H8" />}
       {name === 'impact' && <path d="M12 20V10m0 10-4-4m4 4 4-4M5 10a7 7 0 0 1 14 0M7 10a5 5 0 0 1 10 0" />}
     </svg>
   );
