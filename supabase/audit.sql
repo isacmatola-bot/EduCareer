@@ -17,17 +17,17 @@ actual as (
   select
     table_namespace.nspname as trigger_schema,
     table_class.relname as table_name,
-    trigger.tgname as trigger_name,
+    trg.tgname as trigger_name,
     function_namespace.nspname as function_schema,
-    function.proname as function_name,
-    trigger.tgenabled,
-    pg_get_triggerdef(trigger.oid) as definition
-  from pg_trigger trigger
-  join pg_class table_class on table_class.oid = trigger.tgrelid
+    proc.proname as function_name,
+    trg.tgenabled,
+    pg_get_triggerdef(trg.oid) as definition
+  from pg_trigger trg
+  join pg_class table_class on table_class.oid = trg.tgrelid
   join pg_namespace table_namespace on table_namespace.oid = table_class.relnamespace
-  join pg_proc function on function.oid = trigger.tgfoid
-  join pg_namespace function_namespace on function_namespace.oid = function.pronamespace
-  where not trigger.tgisinternal
+  join pg_proc proc on proc.oid = trg.tgfoid
+  join pg_namespace function_namespace on function_namespace.oid = proc.pronamespace
+  where not trg.tgisinternal
 )
 select
   expected.trigger_schema,
@@ -106,27 +106,31 @@ with expected(source_table, source_column, target_table, target_column, delete_a
 ),
 actual as (
   select
-    constraint.oid,
-    constraint.conrelid::regclass::text as source_table,
+    fk.oid,
+    source_namespace.nspname || '.' || source_relation.relname as source_table,
     source_attribute.attname as source_column,
-    constraint.confrelid::regclass::text as target_table,
+    target_namespace.nspname || '.' || target_relation.relname as target_table,
     target_attribute.attname as target_column,
-    case constraint.confdeltype
+    case fk.confdeltype
       when 'c' then 'CASCADE'
       when 'n' then 'SET NULL'
       when 'r' then 'RESTRICT'
       when 'a' then 'NO ACTION'
       when 'd' then 'SET DEFAULT'
     end as delete_action
-  from pg_constraint constraint
+  from pg_constraint fk
+  join pg_class source_relation on source_relation.oid = fk.conrelid
+  join pg_namespace source_namespace on source_namespace.oid = source_relation.relnamespace
+  join pg_class target_relation on target_relation.oid = fk.confrelid
+  join pg_namespace target_namespace on target_namespace.oid = target_relation.relnamespace
   join pg_attribute source_attribute
-    on source_attribute.attrelid = constraint.conrelid
-   and source_attribute.attnum = constraint.conkey[1]
+    on source_attribute.attrelid = fk.conrelid
+   and source_attribute.attnum = fk.conkey[1]
   join pg_attribute target_attribute
-    on target_attribute.attrelid = constraint.confrelid
-   and target_attribute.attnum = constraint.confkey[1]
-  where constraint.contype = 'f'
-    and cardinality(constraint.conkey) = 1
+    on target_attribute.attrelid = fk.confrelid
+   and target_attribute.attnum = fk.confkey[1]
+  where fk.contype = 'f'
+    and cardinality(fk.conkey) = 1
 )
 select
   expected.*,
@@ -143,4 +147,3 @@ left join actual
  and actual.target_table = expected.target_table
  and actual.target_column = expected.target_column
 order by expected.source_table, expected.source_column;
-
