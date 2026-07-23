@@ -182,6 +182,12 @@ export function authenticateAccount(accounts: UserAccount[], credentials: LoginF
   return { account };
 }
 
+export function assertAccountCanSignIn(account: UserAccount): void {
+  if (account.status === 'disabled') {
+    throw new Error('This account is disabled. Contact EduCareer support.');
+  }
+}
+
 export function accountDisplay(account: UserAccount | null | undefined): string {
   if (!account) {
     return roleLabels.visitor;
