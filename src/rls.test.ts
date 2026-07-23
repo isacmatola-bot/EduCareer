@@ -34,6 +34,15 @@ describe('Supabase authorization contract', () => {
     );
   });
 
+  it('reconnects legacy profiles to Supabase Auth', () => {
+    expect(schema).toContain(
+      "foreign key (id) references auth.users(id) on delete cascade"
+    );
+    expect(schema).toContain(
+      "confrelid = 'auth.users'::regclass"
+    );
+  });
+
   it('audits every required trigger and foreign-key connection', () => {
     expect(audit).toContain("'on_auth_user_created', 'public', 'handle_new_user'");
     expect(audit.match(/touch_[a-z_]+_updated_at/g)).toHaveLength(7);
