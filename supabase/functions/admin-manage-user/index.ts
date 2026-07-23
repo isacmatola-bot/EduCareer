@@ -1,4 +1,7 @@
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+  createClient,
+  type SupabaseClient
+} from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,7 +42,13 @@ Deno.serve(async (request) => {
     if (!authorization) return json({ error: 'Missing authorization header.' }, 401);
 
     const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } });
-    const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+    const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false
+      }
+    });
     const { data: userData, error: userError } = await userClient.auth.getUser();
     if (userError || !userData.user) return json({ error: 'Unauthorized request.' }, 401);
 
@@ -63,11 +72,13 @@ Deno.serve(async (request) => {
     if (body.action === 'delete') {
       if (!isDefaultAdmin) return json({ error: 'Only the default admin can delete accounts.' }, 403);
       if (target.id === caller.id || target.admin_role === 'default_admin') return json({ error: 'The default admin account cannot be deleted.' }, 400);
-      try {
-        await authAdminRequest(supabaseUrl, serviceRoleKey, target.id, 'DELETE');
-      } catch (error) {
-        console.error('admin-manage-user: Auth deletion failed', errorDetails(error));
-        return json({ error: describeError(error, 'Unable to delete this account.') }, errorStatus(error, 400));
+      const { error: deleteError } =
+        await serviceClient.auth.admin.deleteUser(target.id);
+      if (deleteError) {
+        console.error('admin-manage-user: Auth deletion failed', errorDetails(deleteError));
+        return json({
+          error: describeError(deleteError, 'Unable to delete this account.')
+        }, errorStatus(deleteError, 400));
       }
       return json({ success: true }, 200);
     }
@@ -110,18 +121,20 @@ Deno.serve(async (request) => {
       admin_role: profilePatch.admin_role ?? target.admin_role ?? ''
     };
 
-    try {
-      await authAdminRequest(supabaseUrl, serviceRoleKey, target.id, 'PUT', authPatch);
-    } catch (error) {
-      console.error('admin-manage-user: Auth update failed', errorDetails(error));
-      return json({ error: describeError(error, 'Unable to update this account.') }, errorStatus(error, 400));
+    const { error: authUpdateError } =
+      await serviceClient.auth.admin.updateUserById(target.id, authPatch);
+    if (authUpdateError) {
+      console.error('admin-manage-user: Auth update failed', errorDetails(authUpdateError));
+      return json({
+        error: describeError(authUpdateError, 'Unable to update this account.')
+      }, errorStatus(authUpdateError, 400));
     }
 
     const { data: profile, error: profileError } = await serviceClient
       .from('profiles').update(profilePatch).eq('id', target.id).select('*').single();
     if (profileError) {
       console.error('admin-manage-user: profile update failed', errorDetails(profileError));
-      await rollbackAuthUpdate(supabaseUrl, serviceRoleKey, target);
+      await rollbackAuthUpdate(serviceClient, target);
       return json({ error: describeError(profileError, 'Unable to save this account profile.') }, 400);
     }
     return json({ profile }, 200);
@@ -131,50 +144,13 @@ Deno.serve(async (request) => {
   }
 });
 
-async function authAdminRequest(
-  supabaseUrl: string,
-  secretKey: string,
-  userId: string,
-  method: 'PUT' | 'DELETE',
-  payload?: Record<string, unknown>
-): Promise<unknown> {
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    try {
-      const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
-        method,
-        headers: {
-          apikey: secretKey,
-          ...(payload ? { 'Content-Type': 'application/json' } : {})
-        },
-        body: payload ? JSON.stringify(payload) : undefined
-      });
-      const body = await readJson(response);
-      if (response.ok) return body;
-
-      const error = authResponseError(response.status, body);
-      if (!isRetryableStatus(response.status)) throw error;
-      lastError = error;
-    } catch (error) {
-      lastError = error;
-      if (!isRetryableError(error) || attempt === 3) throw error;
-    }
-
-    console.warn(`admin-manage-user: retrying Auth request (${attempt}/3)`);
-    await delay(attempt * 400);
-  }
-
-  throw lastError ?? new Error('Supabase Auth is temporarily unavailable.');
-}
-
 async function rollbackAuthUpdate(
-  supabaseUrl: string,
-  secretKey: string,
+  serviceClient: SupabaseClient,
   target: Record<string, string | null>
 ) {
-  try {
-    await authAdminRequest(supabaseUrl, secretKey, target.id, 'PUT', {
+  const { error } = await serviceClient.auth.admin.updateUserById(
+    target.id,
+    {
       email: target.email,
       email_confirm: true,
       user_metadata: {
@@ -183,26 +159,11 @@ async function rollbackAuthUpdate(
         role: target.role,
         admin_role: target.admin_role ?? ''
       }
-    });
-  } catch (error) {
+    }
+  );
+  if (error) {
     console.error('admin-manage-user: Auth rollback failed', errorDetails(error));
   }
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { message: text };
-  }
-}
-
-function authResponseError(status: number, body: unknown): Error {
-  const error = new Error(describeError(body, `Supabase Auth request failed (${status}).`));
-  Object.assign(error, { status, details: body });
-  return error;
 }
 
 function describeError(error: unknown, fallback: string): string {
@@ -237,22 +198,6 @@ function errorDetails(error: unknown): Record<string, unknown> {
     };
   }
   return { value: error };
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 408 || status === 429 || status >= 500;
-}
-
-function isRetryableError(error: unknown): boolean {
-  if (error && typeof error === 'object' && 'status' in error) {
-    const status = (error as Record<string, unknown>).status;
-    if (typeof status === 'number') return isRetryableStatus(status);
-  }
-  return error instanceof TypeError;
-}
-
-function delay(milliseconds: number) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function json(payload: unknown, status: number) {
