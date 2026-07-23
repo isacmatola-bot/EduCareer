@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   authenticateAccount,
+  assertAccountCanSignIn,
   canDeleteAccount,
   canManageAccount,
   canManageOperations,
@@ -45,6 +46,11 @@ describe('authentication', () => {
     expect(authenticateAccount([{ ...created, status: 'disabled' }], {
       username: 'partner', password: 'SecurePass9!'
     }).error).toContain('disabled');
+  });
+
+  it('rejects a disabled account returned by Supabase authentication', () => {
+    expect(() => assertAccountCanSignIn(account({ status: 'disabled' }))).toThrow('disabled');
+    expect(() => assertAccountCanSignIn(account({ status: 'active' }))).not.toThrow();
   });
 });
 
