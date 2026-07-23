@@ -117,7 +117,8 @@ actual as (
       when 'r' then 'RESTRICT'
       when 'a' then 'NO ACTION'
       when 'd' then 'SET DEFAULT'
-    end as delete_action
+    end as delete_action,
+    fk.convalidated
   from pg_constraint fk
   join pg_class source_relation on source_relation.oid = fk.conrelid
   join pg_namespace source_namespace on source_namespace.oid = source_relation.relnamespace
@@ -137,9 +138,11 @@ select
   case
     when actual.oid is null then 'MISSING'
     when actual.delete_action <> expected.delete_action then 'WRONG_DELETE_ACTION'
+    when not actual.convalidated then 'NOT_VALIDATED'
     else 'OK'
   end as status,
-  actual.delete_action as actual_delete_action
+  actual.delete_action as actual_delete_action,
+  actual.convalidated
 from expected
 left join actual
   on actual.source_table = expected.source_table
