@@ -131,6 +131,25 @@ alter table public.opportunity_applications
 alter table public.placements
   add column if not exists updated_at timestamptz not null default now();
 
+-- Older installations may have created `profiles` without its Auth foreign
+-- key. Reconnect the account lifecycle so deleting an Auth user also removes
+-- the corresponding profile and dependent application records.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where contype = 'f'
+      and conrelid = 'public.profiles'::regclass
+      and confrelid = 'auth.users'::regclass
+  ) then
+    alter table public.profiles
+      add constraint profiles_id_fkey
+      foreign key (id) references auth.users(id) on delete cascade;
+  end if;
+end;
+$$;
+
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
