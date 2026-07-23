@@ -30,7 +30,7 @@ Deno.serve(async (request) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const serviceRoleKey = Deno.env.get('EDUCAREER_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const authorization = request.headers.get('Authorization');
 
     if (!supabaseUrl || !anonKey || !serviceRoleKey) return json({ error: 'Supabase function environment is incomplete.' }, 500);
