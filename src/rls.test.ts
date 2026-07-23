@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const schema = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
+const audit = readFileSync(new URL('../supabase/audit.sql', import.meta.url), 'utf8');
 
 describe('Supabase authorization contract', () => {
   it('recognizes the four operational administrator roles', () => {
@@ -30,6 +31,17 @@ describe('Supabase authorization contract', () => {
     );
     expect(schema).toContain(
       'alter table public.opportunity_applications\n  add column if not exists updated_at'
+    );
+  });
+
+  it('audits every required trigger and foreign-key connection', () => {
+    expect(audit).toContain("'on_auth_user_created', 'public', 'handle_new_user'");
+    expect(audit.match(/touch_[a-z_]+_updated_at/g)).toHaveLength(7);
+    expect(audit).toContain(
+      "('public.opportunity_applications', 'opportunity_id', 'public.opportunities', 'id', 'CASCADE')"
+    );
+    expect(audit).toContain(
+      "('public.placements', 'partner_request_id', 'public.partner_requests', 'id', 'SET NULL')"
     );
   });
 });
