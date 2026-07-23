@@ -113,6 +113,24 @@ create table if not exists public.placements (
   updated_at timestamptz not null default now()
 );
 
+-- `create table if not exists` does not add columns to tables created by an
+-- earlier EduCareer schema. Add timestamp columns explicitly before installing
+-- triggers and functions that depend on them.
+alter table public.profiles
+  add column if not exists updated_at timestamptz not null default now();
+alter table public.candidates
+  add column if not exists updated_at timestamptz not null default now();
+alter table public.partner_requests
+  add column if not exists updated_at timestamptz not null default now();
+alter table public.programs
+  add column if not exists updated_at timestamptz not null default now();
+alter table public.opportunities
+  add column if not exists updated_at timestamptz not null default now();
+alter table public.opportunity_applications
+  add column if not exists updated_at timestamptz not null default now();
+alter table public.placements
+  add column if not exists updated_at timestamptz not null default now();
+
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
