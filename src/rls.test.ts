@@ -23,4 +23,13 @@ describe('Supabase authorization contract', () => {
     expect(schema).toContain('drop policy if exists "Public can resolve login usernames"');
     expect(schema).toContain('drop policy if exists "Allow candidates update"');
   });
+
+  it('migrates timestamp columns required by triggers on existing tables', () => {
+    expect(schema).toContain(
+      'alter table public.profiles\n  add column if not exists updated_at'
+    );
+    expect(schema).toContain(
+      'alter table public.opportunity_applications\n  add column if not exists updated_at'
+    );
+  });
 });
