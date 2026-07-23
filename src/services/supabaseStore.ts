@@ -1,3 +1,4 @@
+import { assertAccountCanSignIn } from '../auth';
 import type { AccountRole, AdminRole, AuthSession, LoginForm, UserAccount } from '../auth';
 import type { CandidateApplication, Opportunity, PartnerRequest, Program } from '../types';
 import { requireSupabase } from './supabaseClient';
@@ -225,7 +226,15 @@ export async function signInSupabaseAccount(credentials: LoginForm): Promise<Use
     throw new Error('No EduCareer profile is connected to this account.');
   }
 
-  return profileToAccount(profile);
+  const account = profileToAccount(profile);
+  try {
+    assertAccountCanSignIn(account);
+  } catch (accountError) {
+    await client.auth.signOut();
+    throw accountError;
+  }
+
+  return account;
 }
 
 export async function signOutSupabaseAccount(): Promise<void> {
