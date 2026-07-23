@@ -52,5 +52,6 @@ describe('Supabase authorization contract', () => {
     expect(audit).toContain(
       "('public.placements', 'partner_request_id', 'public.partner_requests', 'id', 'SET NULL')"
     );
+    expect(audit).toContain("when not actual.convalidated then 'NOT_VALIDATED'");
   });
 });
