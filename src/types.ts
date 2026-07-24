@@ -15,6 +15,7 @@ export type Program = {
   tagline: string;
   description: string;
   activities: string[];
+  status: 'draft' | 'published' | 'closed';
 };
 
 export type Opportunity = {
@@ -26,6 +27,14 @@ export type Opportunity = {
   deadline: string;
   status: 'Open' | 'Upcoming' | 'Closed';
   requirements: string[];
+};
+
+export type OpportunityApplication = {
+  id: string;
+  opportunityId: string;
+  accountId: string;
+  status: 'submitted' | 'reviewing' | 'accepted' | 'rejected' | 'withdrawn';
+  createdAt: string;
 };
 
 export type CandidateApplication = {

@@ -75,6 +75,39 @@ export const roleLabels: Record<ViewerRole, string> = {
   admin: 'Admin Account'
 };
 
+const operationalAdminRoles: AdminRole[] = ['default_admin', 'ceo', 'director', 'it'];
+
+export function canManageOperations(account: UserAccount | null | undefined): boolean {
+  return Boolean(
+    account?.role === 'admin' &&
+    account.status === 'active' &&
+    account.adminRole &&
+    operationalAdminRoles.includes(account.adminRole)
+  );
+}
+
+export function canManageAccount(
+  actor: UserAccount | null | undefined,
+  target: UserAccount | null | undefined
+): boolean {
+  if (!canManageOperations(actor) || !target) return false;
+  return actor?.adminRole === 'default_admin' || target.role !== 'admin';
+}
+
+export function canDeleteAccount(
+  actor: UserAccount | null | undefined,
+  target: UserAccount | null | undefined
+): boolean {
+  return Boolean(
+    actor?.role === 'admin' &&
+    actor.status === 'active' &&
+    actor.adminRole === 'default_admin' &&
+    target &&
+    target.id !== actor.id &&
+    target.adminRole !== 'default_admin'
+  );
+}
+
 export function seedDefaultAdmin(accounts: UserAccount[]): UserAccount[] {
   if (!import.meta.env.DEV) {
     return accounts;
@@ -147,6 +180,12 @@ export function authenticateAccount(accounts: UserAccount[], credentials: LoginF
   }
 
   return { account };
+}
+
+export function assertAccountCanSignIn(account: UserAccount): void {
+  if (account.status === 'disabled') {
+    throw new Error('This account is disabled. Contact EduCareer support.');
+  }
 }
 
 export function accountDisplay(account: UserAccount | null | undefined): string {

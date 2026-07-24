@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react';
 import { useMemo, useState } from 'react';
 import type { AdminRole, UserAccount } from '../auth';
-import { adminRoleLabels } from '../auth';
+import { adminRoleLabels, canDeleteAccount, canManageAccount, canManageOperations } from '../auth';
 import { Icon } from '../components/Icon';
 import { formatAdminRole, formatRole, useI18n } from '../i18n';
 import type { TabId } from '../types';
@@ -76,6 +76,7 @@ export function PortalPage({
     admins: accounts.filter((item) => item.role === 'admin').length,
     graduates: accounts.filter((item) => item.role === 'graduate').length,
     partners: accounts.filter((item) => item.role === 'partner').length,
+    pending: accounts.filter((item) => item.status === 'pending').length,
     disabled: accounts.filter((item) => item.status === 'disabled').length
   }), [accounts]);
 
@@ -103,6 +104,8 @@ export function PortalPage({
 
   const isAdmin = account.role === 'admin';
   const isDefaultAdmin = isAdmin && account.adminRole === 'default_admin';
+  const canManageAccounts = canManageOperations(account);
+  const hasFullAccess = isAdmin || account.status === 'active';
   const roleLabel = isAdmin && account.adminRole ? formatAdminRole(account.adminRole, t) : formatRole(account.role, t);
   const statusLabel = t(`portal.status.${account.status}`);
 
@@ -164,7 +167,13 @@ export function PortalPage({
 
         <article className="content-card">
           <h3><Icon name={account.role === 'partner' ? 'partner' : 'teachers'} /> {t('portal.availableActions')}</h3>
-          {account.role === 'graduate' && (
+          {!hasFullAccess && (
+            <div className="pending-access-panel" role="status">
+              <h4>{t('portal.pendingTitle')}</h4>
+              <p className="muted">{t('portal.pendingBody')}</p>
+            </div>
+          )}
+          {hasFullAccess && account.role === 'graduate' && (
             <>
               <p className="muted">{t('portal.graduateBody')}</p>
               <button type="button" onClick={() => onNavigate('opportunities')}>
@@ -173,7 +182,7 @@ export function PortalPage({
               </button>
             </>
           )}
-          {account.role === 'partner' && (
+          {hasFullAccess && account.role === 'partner' && (
             <>
               <p className="muted">{t('portal.partnerBody')}</p>
               <button type="button" onClick={() => onNavigate('partners')}>
@@ -200,7 +209,7 @@ export function PortalPage({
                   <Icon name="admin" />
                   {t('portal.manageDashboard')}
                 </button>
-                {isDefaultAdmin && (
+                {canManageAccounts && (
                   <button className="secondary" type="button" onClick={() => setShowAccounts((current) => !current)}>
                     <Icon name="teachers" />
                     {showAccounts ? t('portal.hideAccounts') : t('portal.showAccounts')}
@@ -212,7 +221,7 @@ export function PortalPage({
         </article>
       </div>
 
-      {isDefaultAdmin && (
+      {canManageAccounts && (
         <section className="content-card account-management-card">
           <div className="section-heading split-heading">
             <div>
@@ -224,6 +233,7 @@ export function PortalPage({
               <span>{t('portal.admins', { count: accountStats.admins })}</span>
               <span>{t('portal.graduates', { count: accountStats.graduates })}</span>
               <span>{t('portal.partners', { count: accountStats.partners })}</span>
+              <span>{t('portal.pendingAccounts', { count: accountStats.pending })}</span>
               <span>{t('portal.blocked', { count: accountStats.disabled })}</span>
             </div>
           </div>
@@ -329,21 +339,26 @@ export function PortalPage({
                     </div>
 
                     <div className="account-row-actions">
-                      <button className="secondary" type="button" onClick={() => startEditing(target)}>
+                      <button
+                        className="secondary"
+                        type="button"
+                        disabled={!canManageAccount(account, target)}
+                        onClick={() => startEditing(target)}
+                      >
                         {t('actions.edit')}
                       </button>
                       <button
                         className="secondary"
                         type="button"
-                        disabled={target.status === 'active'}
+                        disabled={target.status === 'active' || !canManageAccount(account, target)}
                         onClick={() => onRecoverAccount(target.id)}
                       >
-                        {t('actions.recover')}
+                        {target.status === 'pending' ? t('actions.approve') : t('actions.recover')}
                       </button>
                       <button
                         className="secondary"
                         type="button"
-                        disabled={protectedAccount || target.status === 'disabled'}
+                        disabled={protectedAccount || target.status === 'disabled' || !canManageAccount(account, target)}
                         onClick={() => onBlockAccount(target.id)}
                       >
                         {t('actions.block')}
@@ -351,7 +366,7 @@ export function PortalPage({
                       <button
                         className="secondary danger-button"
                         type="button"
-                        disabled={protectedAccount}
+                        disabled={!canDeleteAccount(account, target) || protectedAccount}
                         onClick={() => onDeleteAccount(target.id)}
                       >
                         {t('actions.delete')}

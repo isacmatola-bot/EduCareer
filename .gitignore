@@ -34,6 +34,7 @@ Thumbs.db
 .vercel/
 .netlify/
 .cache/
+supabase/.temp/
 
 # Archives and temporary backups
 *.zip

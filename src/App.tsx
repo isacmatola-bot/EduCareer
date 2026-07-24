@@ -6,6 +6,7 @@ import {
   seedDefaultAdmin,
   sessionForAccount
 } from './auth';
+import { canDeleteAccount, canManageAccount, canManageOperations } from './auth';
 import type { AdminRole, AuthSession, LoginForm, RegistrationMode, UserAccount, ViewerRole } from './auth';
 import { AppLayout } from './components/AppLayout';
 import { Notice } from './components/Notice';
@@ -16,10 +17,13 @@ import {
   blankPartner,
   candidateKey,
   languageKey,
+  opportunityKey,
+  opportunityApplicationKey,
   partnerKey,
+  programKey,
   sessionKey
 } from './constants';
-import { opportunities, programs } from './data';
+import { opportunities as initialOpportunities, programs as initialPrograms } from './data';
 import { AdminLoginPage } from './features/admin/AdminLoginPage';
 import { DashboardPage } from './features/admin/DashboardPage';
 import {
@@ -42,18 +46,21 @@ import { ProgramsPage } from './pages/ProgramsPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { isKnownRoute, routeForTab, tabFromPath } from './router';
 import {
+  applyToSupabaseOpportunity,
+  createSupabaseOpportunity,
+  createSupabaseProgram,
   createSupabaseAdminAccount,
   deleteSupabaseAccountProfile,
-  insertSupabaseCandidate,
-  insertSupabasePartnerRequest,
   loadSupabaseSnapshot,
   registerSupabaseAccount,
   signInSupabaseAccount,
   signOutSupabaseAccount,
+  updateSupabaseOpportunity,
+  updateSupabaseProgram,
   updateSupabaseAccountProfile
 } from './services/supabaseStore';
 import { isSupabaseConfigured } from './services/supabaseClient';
-import type { CandidateApplication, Opportunity, PartnerRequest, TabId } from './types';
+import type { CandidateApplication, Opportunity, OpportunityApplication, PartnerRequest, Program, TabId } from './types';
 import { makeId, readFromStorage, writeToStorage } from './utils/storage';
 
 const blankLoginForm: LoginForm = {
@@ -95,6 +102,10 @@ function mergeAccount(accounts: UserAccount[], account: UserAccount): UserAccoun
   return [account, ...accounts];
 }
 
+function landingTabForAccount(_account: UserAccount): TabId {
+  return 'home';
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>(() => tabFromPath(window.location.pathname));
   const [historyIndex, setHistoryIndex] = useState<number>(() =>
@@ -108,6 +119,13 @@ export default function App() {
     readFromStorage<CandidateApplication[]>(candidateKey, [])
   );
   const [partners, setPartners] = useState<PartnerRequest[]>(() => readFromStorage<PartnerRequest[]>(partnerKey, []));
+  const [programs, setPrograms] = useState<Program[]>(() => readFromStorage<Program[]>(programKey, initialPrograms));
+  const [opportunities, setOpportunities] = useState<Opportunity[]>(() =>
+    readFromStorage<Opportunity[]>(opportunityKey, initialOpportunities)
+  );
+  const [opportunityApplications, setOpportunityApplications] = useState<OpportunityApplication[]>(() =>
+    readFromStorage<OpportunityApplication[]>(opportunityApplicationKey, [])
+  );
   const [accounts, setAccounts] = useState<UserAccount[]>(() =>
     seedDefaultAdmin(readFromStorage<UserAccount[]>(accountKey, []))
   );
@@ -133,6 +151,7 @@ export default function App() {
   const viewerRole: ViewerRole = currentAccount?.role ?? 'visitor';
   const isAdmin = currentAccount?.role === 'admin';
   const isDefaultAdmin = currentAccount?.role === 'admin' && currentAccount.adminRole === 'default_admin';
+  const canManageAccounts = canManageOperations(currentAccount);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -156,6 +175,15 @@ export default function App() {
   }, [session]);
   useEffect(() => writeToStorage(languageKey, selectedLanguage), [selectedLanguage]);
   useEffect(() => {
+    if (!isSupabaseConfigured) writeToStorage(programKey, programs);
+  }, [programs]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) writeToStorage(opportunityKey, opportunities);
+  }, [opportunities]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) writeToStorage(opportunityApplicationKey, opportunityApplications);
+  }, [opportunityApplications]);
+  useEffect(() => {
     if (!isSupabaseConfigured) {
       return;
     }
@@ -171,6 +199,8 @@ export default function App() {
         setAccounts(snapshot.accounts);
         setCandidates(snapshot.candidates);
         setPartners(snapshot.partners);
+        setPrograms(snapshot.programs);
+        setOpportunities(snapshot.opportunities);
         setSession(snapshot.session);
         setShowWelcome(!snapshot.session);
       })
@@ -210,13 +240,21 @@ export default function App() {
     }
   }, [accessNoticeShown, currentAccount, message, session, showWelcome, t]);
   useEffect(() => {
-    if (!isDefaultAdmin || activeTab === 'portal' || activeTab === 'dashboard') {
+    if (!currentAccount || currentAccount.role === 'admin' || activeTab !== 'portal') {
       return;
     }
 
-    window.history.replaceState({ appIndex: historyIndex, tab: 'portal' }, '', routeForTab('portal'));
-    setActiveTab('portal');
-  }, [activeTab, historyIndex, isDefaultAdmin]);
+    const targetTab = landingTabForAccount(currentAccount);
+    window.history.replaceState({ appIndex: historyIndex, tab: targetTab }, '', routeForTab(targetTab));
+    setActiveTab(targetTab);
+  }, [activeTab, currentAccount, historyIndex]);
+  useEffect(() => {
+    window.history.scrollRestoration = 'manual';
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, []);
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [activeTab]);
   useEffect(() => {
     const currentIndex = typeof window.history.state?.appIndex === 'number'
       ? window.history.state.appIndex
@@ -254,13 +292,13 @@ export default function App() {
       { label: t('dashboard.metric.openOpportunities'), value: openOpportunities.toString() },
       { label: t('dashboard.metric.activePrograms'), value: programs.length.toString() }
     ];
-  }, [accounts.length, candidates.length, partners.length, t]);
+  }, [accounts.length, candidates.length, opportunities, partners.length, programs.length, t]);
 
   const canGoBack = historyIndex > 0;
   const canGoForward = historyIndex < maxHistoryIndex;
 
   function navigateTo(tab: TabId) {
-    const targetTab = isDefaultAdmin && tab !== 'portal' && tab !== 'dashboard' ? 'portal' : tab;
+    const targetTab = tab;
 
     if (targetTab === activeTab) return;
 
@@ -308,14 +346,19 @@ export default function App() {
     if (isSupabaseConfigured) {
       try {
         const account = await signInSupabaseAccount(loginForm);
-        setAccounts((currentAccounts) => mergeAccount(currentAccounts, account));
-        setSession(sessionForAccount(account));
+        const snapshot = await loadSupabaseSnapshot();
+        setAccounts(snapshot.accounts);
+        setCandidates(snapshot.candidates);
+        setPartners(snapshot.partners);
+        setPrograms(snapshot.programs);
+        setOpportunities(snapshot.opportunities);
+        setSession(snapshot.session ?? sessionForAccount(account));
         setLoginForm(blankLoginForm);
         setLoginError('');
         setShowWelcome(false);
         setAccessNoticeShown(true);
         setMessage(t('messages.welcomeBack', { name: account.displayName }));
-        navigateTo('portal');
+        navigateTo(landingTabForAccount(account));
       } catch (error) {
         setLoginError(translateAuthError(getErrorMessage(error), t, 'messages.invalidLogin'));
       }
@@ -336,7 +379,7 @@ export default function App() {
     setShowWelcome(false);
     setAccessNoticeShown(true);
     setMessage(t('messages.welcomeBack', { name: result.account.displayName }));
-    navigateTo('portal');
+    navigateTo(landingTabForAccount(result.account));
   }
 
   async function submitAdminLogin(event: FormEvent<HTMLFormElement>) {
@@ -352,14 +395,19 @@ export default function App() {
           return;
         }
 
-        setAccounts((currentAccounts) => mergeAccount(currentAccounts, account));
-        setSession(sessionForAccount(account));
+        const snapshot = await loadSupabaseSnapshot();
+        setAccounts(snapshot.accounts);
+        setCandidates(snapshot.candidates);
+        setPartners(snapshot.partners);
+        setPrograms(snapshot.programs);
+        setOpportunities(snapshot.opportunities);
+        setSession(snapshot.session ?? sessionForAccount(account));
         setLoginForm(blankLoginForm);
         setLoginError('');
         setShowWelcome(false);
         setAccessNoticeShown(true);
         setMessage(t('messages.adminAccess'));
-        navigateTo('portal');
+        navigateTo('home');
       } catch (error) {
         setLoginError(translateAuthError(getErrorMessage(error), t, 'messages.invalidAdminLogin'));
       }
@@ -380,7 +428,7 @@ export default function App() {
     setShowWelcome(false);
     setAccessNoticeShown(true);
     setMessage(t('messages.adminAccess'));
-    navigateTo('portal');
+    navigateTo('home');
   }
 
   async function logout() {
@@ -407,14 +455,16 @@ export default function App() {
 
     if (isSupabaseConfigured) {
       try {
-        const account = await registerSupabaseAccount({
+        const registration = await registerSupabaseAccount({
           role: 'graduate',
           username: candidateForm.username,
           password,
           displayName: candidateForm.fullName,
           email: candidateForm.email,
-          phone: candidateForm.phone
+          phone: candidateForm.phone,
+          candidate: candidateProfile
         });
+        const { account } = registration;
         const application: CandidateApplication = {
           id: makeId('candidate'),
           ...candidateProfile,
@@ -422,7 +472,16 @@ export default function App() {
           createdAt: new Date().toISOString()
         };
 
-        await insertSupabaseCandidate(application, account.id);
+        if (registration.requiresEmailConfirmation) {
+          setCandidateForm(blankCandidate);
+          setSession(null);
+          setShowWelcome(false);
+          setAccessNoticeShown(true);
+          setMessage(t('messages.confirmEmailGraduate'));
+          navigateTo('home');
+          return;
+        }
+
         setAccounts((currentAccounts) => mergeAccount(currentAccounts, account));
         setSession(sessionForAccount(account));
         setCandidates((current) => [application, ...current]);
@@ -430,7 +489,7 @@ export default function App() {
         setShowWelcome(false);
         setAccessNoticeShown(true);
         setMessage(t('messages.graduateCreated'));
-        navigateTo('portal');
+        navigateTo('opportunities');
       } catch (error) {
         setMessage(translateAuthError(getErrorMessage(error), t, 'messages.unableGraduate'));
       }
@@ -465,7 +524,7 @@ export default function App() {
     setShowWelcome(false);
     setAccessNoticeShown(true);
     setMessage(t('messages.graduateCreated'));
-    navigateTo('portal');
+    navigateTo('opportunities');
   }
 
   async function submitPartner(event: FormEvent<HTMLFormElement>) {
@@ -474,14 +533,16 @@ export default function App() {
 
     if (isSupabaseConfigured) {
       try {
-        const account = await registerSupabaseAccount({
+        const registration = await registerSupabaseAccount({
           role: 'partner',
           username: partnerForm.username,
           password,
           displayName: partnerForm.organizationName,
           email: partnerForm.email,
-          phone: partnerForm.phone
+          phone: partnerForm.phone,
+          partner: partnerProfile
         });
+        const { account } = registration;
         const request: PartnerRequest = {
           id: makeId('partner'),
           ...partnerProfile,
@@ -489,7 +550,16 @@ export default function App() {
           createdAt: new Date().toISOString()
         };
 
-        await insertSupabasePartnerRequest(request, account.id);
+        if (registration.requiresEmailConfirmation) {
+          setPartnerForm(blankPartner);
+          setSession(null);
+          setShowWelcome(false);
+          setAccessNoticeShown(true);
+          setMessage(t('messages.confirmEmailPartner'));
+          navigateTo('home');
+          return;
+        }
+
         setAccounts((currentAccounts) => mergeAccount(currentAccounts, account));
         setSession(sessionForAccount(account));
         setPartners((current) => [request, ...current]);
@@ -497,7 +567,7 @@ export default function App() {
         setShowWelcome(false);
         setAccessNoticeShown(true);
         setMessage(t('messages.partnerCreated'));
-        navigateTo('portal');
+        navigateTo('home');
       } catch (error) {
         setMessage(translateAuthError(getErrorMessage(error), t, 'messages.unablePartner'));
       }
@@ -532,10 +602,10 @@ export default function App() {
     setShowWelcome(false);
     setAccessNoticeShown(true);
     setMessage(t('messages.partnerCreated'));
-    navigateTo('portal');
+    navigateTo('home');
   }
 
-  function applyForOpportunity(opportunity: Opportunity) {
+  async function applyForOpportunity(opportunity: Opportunity) {
     if (opportunity.status === 'Closed') {
       return;
     }
@@ -552,7 +622,80 @@ export default function App() {
       return;
     }
 
-    setMessage(t('messages.applicationIntent', { title: opportunity.title }));
+    if (currentAccount?.status !== 'active') {
+      setMessage(t('messages.accountPending'));
+      return;
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        await applyToSupabaseOpportunity(opportunity.id);
+        setMessage(t('messages.applicationSubmitted', { title: opportunity.title }));
+      } catch (error) {
+        const errorMessage = getErrorMessage(error);
+        setMessage(errorMessage === 'You have already applied for this opportunity.'
+          ? t('messages.applicationAlreadySubmitted')
+          : errorMessage ?? t('messages.applicationUnable'));
+      }
+      return;
+    }
+
+    const alreadyApplied = opportunityApplications.some((application) =>
+      application.opportunityId === opportunity.id && application.accountId === currentAccount.id
+    );
+    if (alreadyApplied) {
+      setMessage(t('messages.applicationAlreadySubmitted'));
+      return;
+    }
+
+    setOpportunityApplications((current) => [{
+      id: makeId('opportunity-application'),
+      opportunityId: opportunity.id,
+      accountId: currentAccount.id,
+      status: 'submitted',
+      createdAt: new Date().toISOString()
+    }, ...current]);
+    setMessage(t('messages.applicationSubmitted', { title: opportunity.title }));
+  }
+
+  async function createProgram(program: Program) {
+    try {
+      const savedProgram = isSupabaseConfigured ? await createSupabaseProgram(program) : program;
+      setPrograms((current) => [savedProgram, ...current]);
+      setMessage(t('messages.programSaved'));
+    } catch (error) {
+      setMessage(getErrorMessage(error) ?? t('messages.contentUnable'));
+    }
+  }
+
+  async function updateProgram(program: Program) {
+    try {
+      const savedProgram = isSupabaseConfigured ? await updateSupabaseProgram(program) : program;
+      setPrograms((current) => current.map((item) => item.id === savedProgram.id ? savedProgram : item));
+      setMessage(t('messages.programSaved'));
+    } catch (error) {
+      setMessage(getErrorMessage(error) ?? t('messages.contentUnable'));
+    }
+  }
+
+  async function createOpportunity(opportunity: Opportunity) {
+    try {
+      const savedOpportunity = isSupabaseConfigured ? await createSupabaseOpportunity(opportunity) : opportunity;
+      setOpportunities((current) => [savedOpportunity, ...current]);
+      setMessage(t('messages.opportunitySaved'));
+    } catch (error) {
+      setMessage(getErrorMessage(error) ?? t('messages.contentUnable'));
+    }
+  }
+
+  async function updateOpportunity(opportunity: Opportunity) {
+    try {
+      const savedOpportunity = isSupabaseConfigured ? await updateSupabaseOpportunity(opportunity) : opportunity;
+      setOpportunities((current) => current.map((item) => item.id === savedOpportunity.id ? savedOpportunity : item));
+      setMessage(t('messages.opportunitySaved'));
+    } catch (error) {
+      setMessage(getErrorMessage(error) ?? t('messages.contentUnable'));
+    }
   }
 
   async function createAdminAccount(draft: AdminAccountDraft) {
@@ -611,8 +754,13 @@ export default function App() {
     const targetAccount = accounts.find((account) => account.id === accountId);
     const isDefaultAdminTarget = targetAccount?.adminRole === 'default_admin' || accountId === 'admin-default';
 
-    if (!isDefaultAdmin) {
+    if (!canManageAccounts) {
       setMessage(t('messages.defaultAdminOnlyEdit'));
+      return;
+    }
+
+    if (!canManageAccount(currentAccount, targetAccount)) {
+      setMessage(t('messages.defaultAdminOnlyEditAdmins'));
       return;
     }
 
@@ -654,8 +802,14 @@ export default function App() {
   }
 
   async function recoverAccount(accountId: string) {
-    if (!isDefaultAdmin) {
+    if (!canManageAccounts) {
       setMessage(t('messages.defaultAdminOnlyRecover'));
+      return;
+    }
+
+    const target = accounts.find((account) => account.id === accountId);
+    if (!canManageAccount(currentAccount, target)) {
+      setMessage(t('messages.defaultAdminOnlyEditAdmins'));
       return;
     }
 
@@ -684,8 +838,13 @@ export default function App() {
   async function blockAccount(accountId: string) {
     const targetAccount = accounts.find((account) => account.id === accountId);
 
-    if (!isDefaultAdmin) {
+    if (!canManageAccounts) {
       setMessage(t('messages.defaultAdminOnlyBlock'));
+      return;
+    }
+
+    if (!canManageAccount(currentAccount, targetAccount)) {
+      setMessage(t('messages.defaultAdminOnlyEditAdmins'));
       return;
     }
 
@@ -719,7 +878,7 @@ export default function App() {
   async function deleteAccount(accountId: string) {
     const targetAccount = accounts.find((account) => account.id === accountId);
 
-    if (!isDefaultAdmin) {
+    if (!canDeleteAccount(currentAccount, targetAccount)) {
       setMessage(t('messages.defaultAdminOnlyDelete'));
       return;
     }
@@ -756,7 +915,7 @@ export default function App() {
         canGoForward={canGoForward}
         viewerRole={viewerRole}
         accountLabel={currentAccount ? formatAccountLabel(currentAccount, t) : t('role.visitor')}
-        adminPortalOnly={isDefaultAdmin}
+        adminPortalOnly={false}
         onNavigate={navigateTo}
         onLanguageChange={setSelectedLanguage}
         onBack={goBack}
@@ -779,11 +938,21 @@ export default function App() {
 
         {activeTab === 'home' && <HomePage onNavigate={navigateTo} onStartRegistration={startRegistration} />}
         {activeTab === 'about' && <AboutPage onNavigate={navigateTo} />}
-        {activeTab === 'programs' && <ProgramsPage />}
+        {activeTab === 'programs' && (
+          <ProgramsPage
+            programs={programs}
+            canManage={canManageAccounts}
+            onCreate={createProgram}
+            onUpdate={updateProgram}
+          />
+        )}
         {activeTab === 'opportunities' && (
           <OpportunitiesPage
-            viewerRole={viewerRole}
-            onNavigate={navigateTo}
+            opportunities={opportunities}
+            canManage={canManageAccounts}
+            canApply={viewerRole === 'graduate' && currentAccount?.status === 'active'}
+            onCreate={createOpportunity}
+            onUpdate={updateOpportunity}
             onApplyOpportunity={applyForOpportunity}
           />
         )}
@@ -803,7 +972,7 @@ export default function App() {
           <PartnerFormPage form={partnerForm} setForm={setPartnerForm} onSubmit={submitPartner} />
         )}
         {activeTab === 'contact' && <ContactPage onNavigate={navigateTo} />}
-        {activeTab === 'portal' && (
+        {activeTab === 'portal' && isAdmin && (
           <PortalPage
             account={currentAccount}
             accounts={accounts}

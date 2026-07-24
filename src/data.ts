@@ -55,7 +55,8 @@ export const programs: Program[] = [
       'Publication of school vacancies and teaching opportunities.',
       'Matching of graduates to schools based on subject area, location, and availability.',
       'Follow-up records for placements and employment outcomes.'
-    ]
+    ],
+    status: 'published'
   },
   {
     id: 'teachready',
@@ -67,7 +68,8 @@ export const programs: Program[] = [
       'Internship attendance and supervisor tracking.',
       'Classroom support for schools with high student–teacher ratios.',
       'Performance feedback reports for trainees.'
-    ]
+    ],
+    status: 'published'
   },
   {
     id: 'edumentor',
@@ -79,7 +81,8 @@ export const programs: Program[] = [
       'Monthly mentoring sessions.',
       'Career planning support.',
       'Professional ethics and classroom confidence coaching.'
-    ]
+    ],
+    status: 'published'
   },
   {
     id: 'seminars',
@@ -91,7 +94,8 @@ export const programs: Program[] = [
       'Digital pedagogy training.',
       'CV, interview, and professional readiness sessions.',
       'Education labour market seminars.'
-    ]
+    ],
+    status: 'published'
   }
 ];
 

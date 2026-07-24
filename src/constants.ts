@@ -7,6 +7,9 @@ export const partnerKey = 'educareer:partners';
 export const accountKey = 'educareer:accounts';
 export const sessionKey = 'educareer:session';
 export const languageKey = 'educareer:language';
+export const programKey = 'educareer:programs';
+export const opportunityKey = 'educareer:opportunities';
+export const opportunityApplicationKey = 'educareer:opportunity-applications';
 
 export const tabs: { id: TabId; label: string; icon: IconName }[] = [
   { id: 'home', label: 'Home', icon: 'home' },

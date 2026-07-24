@@ -516,6 +516,52 @@ textarea:focus {
   }
 }
 
+/* Compact vector controls for administration and session utilities. */
+.admin-icon-button,
+.header-utility-row .icon-control {
+  box-sizing: border-box;
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-icon-button .icon,
+.header-utility-row .icon-control .icon {
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+}
+
+.language-picker.icon-control {
+  position: relative;
+  cursor: pointer;
+}
+
+.language-picker.icon-control select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .header-utility-row .language-picker.icon-control,
+  .header-utility-row .header-session-button.icon-control {
+    width: 44px;
+    min-width: 44px;
+    max-width: 44px;
+  }
+}
+
 .mission-vision-card {
   display: grid;
   align-content: center;
@@ -897,8 +943,10 @@ textarea:focus {
   --card: #ffffff;
   --soft: #eef7f3;
   --border: #d8e3df;
-  --surface: #f6f8f7;
+  --surface: #bbcdaa;
   --shadow: 0 16px 38px rgba(16, 24, 40, 0.08);
+  --control-size: 44px;
+  --menu-item-width: 148px;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -1563,10 +1611,57 @@ button:disabled {
   width: fit-content;
 }
 
+.pending-access-panel {
+  padding: 16px;
+  border: 1px solid #d7aa3f;
+  border-left: 5px solid #b57d05;
+  border-radius: 12px;
+  background: #fff9e8;
+}
+
+.pending-access-panel h4 {
+  margin: 0 0 6px;
+  color: #6f4b00;
+}
+
 .portal-action-row {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.program-editor,
+.opportunity-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.program-editor label,
+.opportunity-editor label {
+  display: grid;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.program-editor textarea,
+.opportunity-editor textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.opportunity-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.program-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
 }
 
 .account-management-card {
@@ -1779,6 +1874,25 @@ button:disabled {
   }
 }
 
+/* Shared compact sizing for administrative controls. */
+.admin-icon-button {
+  box-sizing: border-box;
+  flex: 0 0 var(--control-size);
+  width: var(--control-size);
+  min-width: var(--control-size);
+  max-width: var(--control-size);
+  height: var(--control-size);
+  min-height: var(--control-size);
+  max-height: var(--control-size);
+  padding: 0;
+}
+
+.split-heading .create-icon-button {
+  margin-left: auto;
+  align-self: center;
+  flex: 0 0 var(--control-size);
+}
+
 /* EduCareer access popups and compact admin refinement */
 .notice-overlay {
   position: fixed;
@@ -1932,5 +2046,172 @@ button:disabled {
   .dashboard-metric-grid .metric-card {
     min-height: 112px;
     padding: 16px 12px 14px 18px;
+  }
+}
+
+/* Professional two-zone header: identity on the left, navigation on the right. */
+.site-header {
+  grid-template-columns: minmax(280px, 330px) minmax(0, 1fr);
+  align-items: center;
+  gap: 28px;
+  min-height: 132px;
+  padding: 14px 0 16px;
+  border-bottom-color: rgba(8, 79, 70, 0.18);
+  background: transparent;
+  box-shadow: none;
+}
+
+.header-identity {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.header-identity .movement-controls {
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+  width: auto;
+}
+
+.header-identity .brand-block {
+  min-width: 0;
+}
+
+.header-identity .session-pill {
+  max-width: 100%;
+  min-height: 34px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-area {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.header-utility-row,
+.main-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+.header-utility-row .language-picker,
+.header-utility-row .header-session-button {
+  box-sizing: border-box;
+  flex: 0 0 var(--control-size);
+  width: var(--control-size);
+  min-width: var(--control-size);
+  max-width: var(--control-size);
+  height: var(--control-size);
+  min-height: var(--control-size);
+  max-height: var(--control-size);
+  padding: 0;
+  justify-content: center;
+}
+
+.nav-tabs,
+.session-controls {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-tabs a,
+.language-picker,
+.session-link,
+.session-controls button {
+  width: 118px;
+  min-width: 118px;
+  min-height: var(--control-size);
+  height: var(--control-size);
+  padding: 8px 12px;
+  justify-content: center;
+  border-radius: 9px;
+  text-align: center;
+}
+
+.main-menu-row .nav-tabs a,
+.main-menu-row .session-link {
+  box-sizing: border-box;
+  flex: 0 0 var(--menu-item-width);
+  width: var(--menu-item-width);
+  min-width: var(--menu-item-width);
+  max-width: var(--menu-item-width);
+  height: var(--control-size);
+  min-height: var(--control-size);
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.language-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.language-picker select {
+  min-width: 0;
+  width: 100%;
+}
+
+@media (max-width: 1180px) {
+  .site-header {
+    grid-template-columns: 270px minmax(0, 1fr);
+  }
+
+  .nav-area,
+  .nav-tabs,
+  .session-controls,
+  .header-utility-row,
+  .main-menu-row {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 920px) {
+  .site-header {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .header-identity,
+  .nav-area,
+  .nav-tabs,
+  .session-controls {
+    width: 100%;
+  }
+
+  .nav-area,
+  .nav-tabs,
+  .session-controls,
+  .header-utility-row,
+  .main-menu-row {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .nav-tabs a,
+  .language-picker,
+  .session-link,
+  .session-controls button {
+    width: 100%;
+    min-width: 100%;
+  }
+
+  .header-utility-row .language-picker,
+  .header-utility-row .header-session-button {
+    width: var(--control-size);
+    min-width: var(--control-size);
   }
 }
