@@ -6,6 +6,7 @@ export type TabId =
   | 'register'
   | 'partners'
   | 'contact'
+  | 'account'
   | 'portal'
   | 'dashboard';
 

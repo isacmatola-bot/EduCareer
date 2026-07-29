@@ -26,7 +26,7 @@ create table if not exists public.profiles (
       'statistics'
     )
   ),
-  status text not null default 'pending' check (status in ('active', 'pending', 'disabled')),
+  status text not null default 'pending' check (status in ('active', 'pending', 'rejected', 'disabled')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -387,6 +387,32 @@ $$;
 create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
+
+create or replace function public.sync_profile_email_from_auth()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.email is distinct from old.email and new.email is not null then
+    update public.profiles
+       set email = lower(new.email),
+           updated_at = now()
+     where id = new.id;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.sync_profile_email_from_auth() from public, anon, authenticated;
+
+drop trigger if exists on_auth_user_email_changed on auth.users;
+create trigger on_auth_user_email_changed
+after update of email on auth.users
+for each row
+when (new.email is distinct from old.email)
+execute function public.sync_profile_email_from_auth();
 
 create or replace function public.get_login_email(login_username text)
 returns text

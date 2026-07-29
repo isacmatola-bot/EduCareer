@@ -8,6 +8,7 @@ const routeByTab: Record<TabId, string> = {
   register: '/register',
   partners: '/partners',
   contact: '/contact',
+  account: '/my-account',
   portal: '/portal',
   dashboard: '/admin'
 };

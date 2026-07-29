@@ -5,6 +5,7 @@
 with expected(trigger_schema, table_name, trigger_name, function_schema, function_name) as (
   values
     ('auth', 'users', 'on_auth_user_created', 'public', 'handle_new_user'),
+    ('auth', 'users', 'on_auth_user_email_changed', 'public', 'sync_profile_email_from_auth'),
     ('public', 'profiles', 'touch_profiles_updated_at', 'public', 'touch_updated_at'),
     ('public', 'candidates', 'touch_candidates_updated_at', 'public', 'touch_updated_at'),
     ('public', 'partner_requests', 'touch_partner_requests_updated_at', 'public', 'touch_updated_at'),

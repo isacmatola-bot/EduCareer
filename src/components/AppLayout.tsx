@@ -133,6 +133,17 @@ export function AppLayout({
                 {t('actions.portal')}
               </a>
             )}
+            {(viewerRole === 'graduate' || viewerRole === 'partner') && (
+              <a
+                href={routeForTab('account')}
+                className={activeTab === 'account' ? 'session-link active' : 'session-link'}
+                aria-current={activeTab === 'account' ? 'page' : undefined}
+                onClick={(event) => handleNavigationClick(event, 'account')}
+              >
+                <Icon name="admin" />
+                {t('actions.myAccount')}
+              </a>
+            )}
           </div>
         </div>
       </header>

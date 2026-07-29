@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 
 const schema = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
 const audit = readFileSync(new URL('../supabase/audit.sql', import.meta.url), 'utf8');
+const accountOperations = readFileSync(
+  new URL('../supabase/migrations/20260730_account_operations.sql', import.meta.url),
+  'utf8'
+);
 
 describe('Supabase authorization contract', () => {
   it('recognizes the four operational administrator roles', () => {
@@ -53,5 +57,14 @@ describe('Supabase authorization contract', () => {
       "('public.placements', 'partner_request_id', 'public.partner_requests', 'id', 'SET NULL')"
     );
     expect(audit).toContain("when not actual.convalidated then 'NOT_VALIDATED'");
+  });
+
+  it('supports rejected accounts and verified email synchronization', () => {
+    expect(schema).toContain("status in ('active', 'pending', 'rejected', 'disabled')");
+    expect(accountOperations).toContain('on_auth_user_email_changed');
+    expect(accountOperations).toContain('sync_profile_email_from_auth');
+    expect(accountOperations).toContain(
+      'revoke all on function public.sync_profile_email_from_auth() from public, anon, authenticated'
+    );
   });
 });

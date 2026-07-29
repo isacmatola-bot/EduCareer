@@ -25,7 +25,7 @@ type ManageRequest = {
     displayName?: string;
     email?: string;
     phone?: string | null;
-    status?: 'active' | 'pending' | 'disabled';
+    status?: 'active' | 'pending' | 'rejected' | 'disabled';
     adminRole?: string | null;
   };
 };
@@ -108,7 +108,7 @@ Deno.serve(async (request) => {
     }
     if (patch.phone !== undefined) profilePatch.phone = patch.phone?.trim() || null;
     if (patch.status !== undefined) {
-      if (!['active', 'pending', 'disabled'].includes(patch.status)) return json({ error: 'Invalid account status.' }, 400);
+      if (!['active', 'pending', 'rejected', 'disabled'].includes(patch.status)) return json({ error: 'Invalid account status.' }, 400);
       if (target.admin_role === 'default_admin' && patch.status !== 'active') return json({ error: 'The default admin must remain active.' }, 400);
       profilePatch.status = patch.status;
     }
