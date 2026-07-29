@@ -460,10 +460,10 @@ revoke execute on function public.handle_new_user() from public, anon, authentic
 -- only deliberately anonymous RPC because the login form accepts usernames.
 revoke execute on function public.current_user_is_default_admin() from public, anon;
 revoke execute on function public.current_user_is_admin() from public, anon;
-revoke execute on function public.current_user_can_manage_operations() from public, anon;
+revoke execute on function public.current_user_can_manage_operations() from public;
 grant execute on function public.current_user_is_default_admin() to authenticated;
 grant execute on function public.current_user_is_admin() to authenticated;
-grant execute on function public.current_user_can_manage_operations() to authenticated;
+grant execute on function public.current_user_can_manage_operations() to anon, authenticated;
 revoke execute on function public.get_login_email(text) from public;
 grant execute on function public.get_login_email(text) to anon, authenticated;
 
