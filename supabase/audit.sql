@@ -150,3 +150,87 @@ left join actual
  and actual.target_table = expected.target_table
  and actual.target_column = expected.target_column
 order by expected.source_table, expected.source_column;
+
+-- 4. Registration must have exactly one non-system Auth trigger invoking the
+-- EduCareer handler. A count above one indicates a duplicate workflow.
+select
+  count(*) as educareer_registration_trigger_count,
+  array_agg(trigger_record.tgname order by trigger_record.tgname) as trigger_names
+from pg_trigger trigger_record
+join pg_proc function_record
+  on function_record.oid = trigger_record.tgfoid
+join pg_namespace function_schema
+  on function_schema.oid = function_record.pronamespace
+where trigger_record.tgrelid = 'auth.users'::regclass
+  and not trigger_record.tgisinternal
+  and function_schema.nspname = 'public'
+  and function_record.proname = 'handle_new_user';
+
+-- 5. Inventory every non-system trigger that can change EduCareer data.
+select
+  trigger_record.tgrelid::regclass as target_table,
+  trigger_record.tgname as trigger_name,
+  trigger_record.tgfoid::regprocedure as function_name,
+  pg_get_triggerdef(trigger_record.oid, true) as definition
+from pg_trigger trigger_record
+where not trigger_record.tgisinternal
+  and (
+    trigger_record.tgrelid = 'auth.users'::regclass
+    or trigger_record.tgrelid::regclass::text like 'public.%'
+  )
+order by target_table::text, trigger_name;
+
+-- 6. Inventory all public RLS policies and their effective role scope.
+select
+  schemaname,
+  tablename,
+  policyname,
+  roles,
+  cmd,
+  qual,
+  with_check
+from pg_policies
+where schemaname = 'public'
+order by tablename, policyname;
+
+-- 7. Inventory function security and effective client execution rights.
+select
+  function_record.oid::regprocedure as function_name,
+  function_record.prosecdef as security_definer,
+  function_record.proconfig as function_configuration,
+  has_function_privilege(
+    'anon',
+    function_record.oid,
+    'execute'
+  ) as anon_can_execute,
+  has_function_privilege(
+    'authenticated',
+    function_record.oid,
+    'execute'
+  ) as authenticated_can_execute
+from pg_proc function_record
+join pg_namespace function_schema
+  on function_schema.oid = function_record.pronamespace
+where function_schema.nspname = 'public'
+  and function_record.proname in (
+    'current_user_can_manage_operations',
+    'current_user_is_admin',
+    'current_user_is_default_admin',
+    'get_login_email',
+    'handle_new_educareer_user',
+    'handle_new_user',
+    'rls_auto_enable',
+    'sync_profile_auth_user_id',
+    'touch_updated_at'
+  )
+order by function_record.proname;
+
+-- 8. Inventory direct application-table privileges for API roles.
+select
+  grantee,
+  table_name,
+  privilege_type
+from information_schema.role_table_grants
+where table_schema = 'public'
+  and grantee in ('anon', 'authenticated', 'service_role')
+order by grantee, table_name, privilege_type;
