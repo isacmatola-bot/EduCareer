@@ -18,7 +18,7 @@ authentication changes, or deployment configuration changes.
 | `public.sync_profile_auth_user_id()` | Keeps legacy `profiles.auth_user_id` aligned | Revoked from `PUBLIC`, `anon`, and `authenticated` |
 | `public.current_user_is_admin()` | RLS authorization helper | `authenticated` only |
 | `public.current_user_is_default_admin()` | RLS default-admin helper | `authenticated` only |
-| `public.current_user_can_manage_operations()` | RLS operational-admin helper | `authenticated` only |
+| `public.current_user_can_manage_operations()` | Boolean RLS operational-admin helper used by public read policies | `anon` and `authenticated` |
 | `public.get_login_email(text)` | Resolves the existing username-login flow | `anon` and `authenticated`; deliberately narrow result |
 
 `public.handle_new_educareer_user()` and `public.rls_auto_enable()` are legacy
@@ -27,10 +27,11 @@ that they have no table trigger, event trigger, or extension dependency.
 
 ## Edge Function CORS
 
-`admin-create-user` and `admin-manage-user` allow `POST` and `OPTIONS` from the
-single origin in `EDUCAREER_ALLOWED_ORIGIN`. If the secret is absent, the
-production origin is `https://edu-career-chi.vercel.app`. Preview deployments
-must receive an explicit approved origin; wildcard CORS is prohibited.
+The administrative and account self-service Edge Functions allow `POST` and
+`OPTIONS` from the comma-separated origins in `EDUCAREER_ALLOWED_ORIGIN`, the
+production origin `https://edu-career-chi.vercel.app`, and EduCareer previews
+owned by the `2kgmcorp` Vercel team. The response reflects only a validated
+request origin; wildcard CORS is prohibited.
 
 ## Web response headers
 
