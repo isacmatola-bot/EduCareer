@@ -85,6 +85,9 @@ create trigger sync_profile_auth_user_id
 before insert or update of id, auth_user_id on public.profiles
 for each row execute function public.sync_profile_auth_user_id();
 
+revoke execute on function public.sync_profile_auth_user_id()
+from public, anon, authenticated;
+
 -- Do not make the column NOT NULL until the migration proves that all existing
 -- rows are connected to Auth. This produces a clear error instead of partially
 -- applying the migration.
