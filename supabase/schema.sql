@@ -153,6 +153,7 @@ $$;
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
   new.updated_at = now();
@@ -355,7 +356,34 @@ begin
 end;
 $$;
 
-drop trigger if exists on_auth_user_created on auth.users;
+-- Earlier EduCareer deployments may have installed the same registration
+-- function under more than one trigger name. Running both triggers for one
+-- Auth insert can create duplicate records and makes Supabase Auth report the
+-- opaque "Database error creating new user".
+do $$
+declare
+  duplicate_trigger record;
+begin
+  for duplicate_trigger in
+    select trigger_record.tgname
+    from pg_trigger trigger_record
+    join pg_proc function_record
+      on function_record.oid = trigger_record.tgfoid
+    join pg_namespace function_schema
+      on function_schema.oid = function_record.pronamespace
+    where trigger_record.tgrelid = 'auth.users'::regclass
+      and not trigger_record.tgisinternal
+      and function_schema.nspname = 'public'
+      and function_record.proname = 'handle_new_user'
+  loop
+    execute format(
+      'drop trigger if exists %I on auth.users',
+      duplicate_trigger.tgname
+    );
+  end loop;
+end;
+$$;
+
 create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
@@ -395,6 +423,23 @@ grant select, insert, update on public.opportunity_applications to authenticated
 revoke update, delete on public.profiles from authenticated;
 grant select on public.profiles to authenticated;
 grant update (display_name, phone, status) on public.profiles to authenticated;
+
+-- Trigger functions are invoked by PostgreSQL, never through the public API.
+-- Remove the default PUBLIC execute privilege so PostgREST clients cannot call
+-- them directly.
+revoke execute on function public.touch_updated_at() from public, anon, authenticated;
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+
+-- RLS helpers are required only by signed-in users. Username resolution is the
+-- only deliberately anonymous RPC because the login form accepts usernames.
+revoke execute on function public.current_user_is_default_admin() from public, anon;
+revoke execute on function public.current_user_is_admin() from public, anon;
+revoke execute on function public.current_user_can_manage_operations() from public, anon;
+grant execute on function public.current_user_is_default_admin() to authenticated;
+grant execute on function public.current_user_is_admin() to authenticated;
+grant execute on function public.current_user_can_manage_operations() to authenticated;
+revoke execute on function public.get_login_email(text) from public;
+grant execute on function public.get_login_email(text) to anon, authenticated;
 
 alter table public.profiles enable row level security;
 alter table public.candidates enable row level security;
