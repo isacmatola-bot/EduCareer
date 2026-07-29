@@ -4,8 +4,12 @@ import {
 } from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+  'Access-Control-Allow-Origin':
+    Deno.env.get('EDUCAREER_ALLOWED_ORIGIN') ??
+    'https://edu-career-chi.vercel.app',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Vary': 'Origin'
 };
 
 const operationalRoles = new Set(['default_admin', 'ceo', 'director', 'it']);
