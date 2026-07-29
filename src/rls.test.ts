@@ -7,6 +7,10 @@ const accountOperations = readFileSync(
   new URL('../supabase/migrations/20260730_account_operations.sql', import.meta.url),
   'utf8'
 );
+const helperExecutionRepair = readFileSync(
+  new URL('../supabase/migrations/20260730_restore_rls_helper_execution.sql', import.meta.url),
+  'utf8'
+);
 
 describe('Supabase authorization contract', () => {
   it('recognizes the four operational administrator roles', () => {
@@ -65,6 +69,19 @@ describe('Supabase authorization contract', () => {
     expect(accountOperations).toContain('sync_profile_email_from_auth');
     expect(accountOperations).toContain(
       'revoke all on function public.sync_profile_email_from_auth() from public, anon, authenticated'
+    );
+  });
+
+  it('lets public RLS policies evaluate the operational-admin boolean safely', () => {
+    expect(schema).toContain(
+      'grant execute on function public.current_user_can_manage_operations() to anon, authenticated'
+    );
+    expect(helperExecutionRepair).toContain(
+      'grant execute on function public.current_user_can_manage_operations()'
+    );
+    expect(helperExecutionRepair).toContain('to anon, authenticated');
+    expect(helperExecutionRepair).toContain(
+      'revoke all on function public.current_user_can_manage_operations() from public'
     );
   });
 });
