@@ -1,15 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const allowedOrigin =
-  Deno.env.get('EDUCAREER_ALLOWED_ORIGIN') ??
-  'https://edu-career-chi.vercel.app';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': allowedOrigin,
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Vary': 'Origin'
-};
+const productionOrigin = 'https://edu-career-chi.vercel.app';
+const previewOriginPattern =
+  /^https:\/\/edu-career-[a-z0-9-]+-2kgmcorp\.vercel\.app$/;
 
 type UpdateRequest = {
   action?: 'update';
@@ -22,8 +15,10 @@ type UpdateRequest = {
 };
 
 Deno.serve(async (request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-  if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
+  const origin = allowedOrigin(request);
+  if (!origin) return json({ error: 'Origin not allowed.' }, 403, productionOrigin);
+  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(origin) });
+  if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405, origin);
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -34,9 +29,9 @@ Deno.serve(async (request) => {
     const authorization = request.headers.get('Authorization');
 
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-      return json({ error: 'Supabase function environment is incomplete.' }, 500);
+      return json({ error: 'Supabase function environment is incomplete.' }, 500, origin);
     }
-    if (!authorization) return json({ error: 'Missing authorization header.' }, 401);
+    if (!authorization) return json({ error: 'Missing authorization header.' }, 401, origin);
 
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authorization } }
@@ -50,19 +45,19 @@ Deno.serve(async (request) => {
     });
 
     const { data: userData, error: userError } = await userClient.auth.getUser();
-    if (userError || !userData.user) return json({ error: 'Unauthorized request.' }, 401);
+    if (userError || !userData.user) return json({ error: 'Unauthorized request.' }, 401, origin);
 
     const body = await request.json() as UpdateRequest;
-    if (body.action !== 'update') return json({ error: 'Invalid account operation.' }, 400);
+    if (body.action !== 'update') return json({ error: 'Invalid account operation.' }, 400, origin);
 
     const { data: currentProfile, error: profileReadError } = await serviceClient
       .from('profiles')
       .select('*')
       .eq('id', userData.user.id)
       .single();
-    if (profileReadError || !currentProfile) return json({ error: 'Account profile not found.' }, 404);
+    if (profileReadError || !currentProfile) return json({ error: 'Account profile not found.' }, 404, origin);
     if (currentProfile.status === 'disabled' || currentProfile.status === 'rejected') {
-      return json({ error: 'This account cannot be updated.' }, 403);
+      return json({ error: 'This account cannot be updated.' }, 403, origin);
     }
 
     const patch = body.patch ?? {};
@@ -76,7 +71,7 @@ Deno.serve(async (request) => {
 
     if (patch.displayName !== undefined) {
       const displayName = patch.displayName.trim();
-      if (displayName.length < 2) return json({ error: 'Display name is required.' }, 400);
+      if (displayName.length < 2) return json({ error: 'Display name is required.' }, 400, origin);
       profilePatch.display_name = displayName;
       metadata.display_name = displayName;
     }
@@ -85,13 +80,13 @@ Deno.serve(async (request) => {
       metadata.phone = profilePatch.phone ?? '';
     }
     if (patch.password !== undefined && patch.password.length < 8) {
-      return json({ error: 'Password must contain at least 8 characters.' }, 400);
+      return json({ error: 'Password must contain at least 8 characters.' }, 400, origin);
     }
 
     const requestedEmail = patch.email?.trim().toLowerCase();
     const emailChanged = Boolean(requestedEmail && requestedEmail !== currentProfile.email);
     if (emailChanged && !requestedEmail?.includes('@')) {
-      return json({ error: 'A valid email address is required.' }, 400);
+      return json({ error: 'A valid email address is required.' }, 400, origin);
     }
     if (emailChanged) {
       const { data: emailOwner } = await serviceClient
@@ -100,7 +95,7 @@ Deno.serve(async (request) => {
         .eq('email', requestedEmail)
         .neq('id', userData.user.id)
         .maybeSingle();
-      if (emailOwner) return json({ error: 'This email address is already registered.' }, 409);
+      if (emailOwner) return json({ error: 'This email address is already registered.' }, 409, origin);
     }
 
     const authPatch: {
@@ -112,7 +107,7 @@ Deno.serve(async (request) => {
     if (patch.password) authPatch.password = patch.password;
 
     const { error: authUpdateError } = await userClient.auth.updateUser(authPatch);
-    if (authUpdateError) return json({ error: authUpdateError.message }, authUpdateError.status ?? 400);
+    if (authUpdateError) return json({ error: authUpdateError.message }, authUpdateError.status ?? 400, origin);
 
     let profile = currentProfile;
     if (Object.keys(profilePatch).length > 0) {
@@ -122,19 +117,43 @@ Deno.serve(async (request) => {
         .eq('id', userData.user.id)
         .select('*')
         .single();
-      if (profileUpdateError) return json({ error: profileUpdateError.message }, 400);
+      if (profileUpdateError) return json({ error: profileUpdateError.message }, 400, origin);
       profile = updatedProfile;
     }
 
     return json({
       profile,
       emailConfirmationRequired: emailChanged
-    }, 200);
+    }, 200, origin);
   } catch (error) {
     console.error('account-self-service: unexpected failure', errorDetails(error));
-    return json({ error: error instanceof Error ? error.message : 'Unexpected server error.' }, 500);
+    return json({ error: error instanceof Error ? error.message : 'Unexpected server error.' }, 500, origin);
   }
 });
+
+function allowedOrigin(request: Request): string | null {
+  const requestOrigin = request.headers.get('Origin');
+  if (!requestOrigin) return productionOrigin;
+
+  const configuredOrigins = (Deno.env.get('EDUCAREER_ALLOWED_ORIGIN') ?? productionOrigin)
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  return configuredOrigins.includes(requestOrigin) ||
+    previewOriginPattern.test(requestOrigin)
+    ? requestOrigin
+    : null;
+}
+
+function corsHeaders(origin: string) {
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin'
+  };
+}
 
 function errorDetails(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
@@ -149,9 +168,9 @@ function errorDetails(error: unknown): Record<string, unknown> {
   return { value: error };
 }
 
-function json(payload: unknown, status: number) {
+function json(payload: unknown, status: number, origin: string) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' }
   });
 }
