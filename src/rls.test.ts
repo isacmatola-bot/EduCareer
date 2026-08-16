@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest';
 const schema = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
 const audit = readFileSync(new URL('../supabase/audit.sql', import.meta.url), 'utf8');
 const accountOperations = readFileSync(
-  new URL('../supabase/migrations/20260730_account_operations.sql', import.meta.url),
+  new URL('../supabase/migrations/20260816010224_account_operations.sql', import.meta.url),
   'utf8'
 );
-const helperExecutionRepair = readFileSync(
-  new URL('../supabase/migrations/20260730_restore_rls_helper_execution.sql', import.meta.url),
+const publicAdminRlsSeparation = readFileSync(
+  new URL('../supabase/migrations/20260816010301_separate_public_and_admin_rls.sql', import.meta.url),
   'utf8'
 );
 
@@ -72,16 +72,15 @@ describe('Supabase authorization contract', () => {
     );
   });
 
-  it('lets public RLS policies evaluate the operational-admin boolean safely', () => {
-    expect(schema).toContain(
-      'grant execute on function public.current_user_can_manage_operations() to anon, authenticated'
+  it('separates public reads from authenticated administrative authorization', () => {
+    expect(publicAdminRlsSeparation).toContain("using (status in ('open', 'upcoming'))");
+    expect(publicAdminRlsSeparation).toContain("using (status = 'published')");
+    expect(publicAdminRlsSeparation).toContain(
+      'revoke all on function public.current_user_can_manage_operations()\nfrom public, anon'
     );
-    expect(helperExecutionRepair).toContain(
-      'grant execute on function public.current_user_can_manage_operations()'
+    expect(publicAdminRlsSeparation).toContain(
+      'grant execute on function public.current_user_can_manage_operations()\nto authenticated'
     );
-    expect(helperExecutionRepair).toContain('to anon, authenticated');
-    expect(helperExecutionRepair).toContain(
-      'revoke all on function public.current_user_can_manage_operations() from public'
-    );
+    expect(publicAdminRlsSeparation).not.toContain('to anon, authenticated');
   });
 });
