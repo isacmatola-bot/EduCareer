@@ -52,6 +52,7 @@ import {
   createSupabaseProgram,
   createSupabaseAdminAccount,
   deleteSupabaseAccountProfile,
+  deleteSupabaseOpportunity,
   loadSupabaseSnapshot,
   registerSupabaseAccount,
   signInSupabaseAccount,
@@ -131,6 +132,8 @@ export default function App() {
     readFromStorage<OpportunityApplication[]>(opportunityApplicationKey, [])
   );
   const [savingOwnAccount, setSavingOwnAccount] = useState(false);
+  const [loadingSupabaseData, setLoadingSupabaseData] = useState(isSupabaseConfigured);
+  const [supabaseLoadError, setSupabaseLoadError] = useState('');
   const [accounts, setAccounts] = useState<UserAccount[]>(() =>
     seedDefaultAdmin(readFromStorage<UserAccount[]>(accountKey, []))
   );
@@ -195,6 +198,9 @@ export default function App() {
 
     let isCancelled = false;
 
+    setLoadingSupabaseData(true);
+    setSupabaseLoadError('');
+
     loadSupabaseSnapshot()
       .then((snapshot) => {
         if (isCancelled) {
@@ -211,7 +217,14 @@ export default function App() {
       })
       .catch((error) => {
         if (!isCancelled) {
-          setMessage(getErrorMessage(error) ?? 'Unable to load Supabase data.');
+          const errorMessage = getErrorMessage(error) ?? 'Unable to load Supabase data.';
+          setSupabaseLoadError(errorMessage);
+          setMessage(errorMessage);
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setLoadingSupabaseData(false);
         }
       });
 
@@ -689,7 +702,9 @@ export default function App() {
       setOpportunities((current) => [savedOpportunity, ...current]);
       setMessage(t('messages.opportunitySaved'));
     } catch (error) {
-      setMessage(getErrorMessage(error) ?? t('messages.contentUnable'));
+      const errorMessage = getErrorMessage(error) ?? t('messages.contentUnable');
+      setMessage(errorMessage);
+      throw new Error(errorMessage);
     }
   }
 
@@ -699,7 +714,23 @@ export default function App() {
       setOpportunities((current) => current.map((item) => item.id === savedOpportunity.id ? savedOpportunity : item));
       setMessage(t('messages.opportunitySaved'));
     } catch (error) {
-      setMessage(getErrorMessage(error) ?? t('messages.contentUnable'));
+      const errorMessage = getErrorMessage(error) ?? t('messages.contentUnable');
+      setMessage(errorMessage);
+      throw new Error(errorMessage);
+    }
+  }
+
+  async function deleteOpportunity(opportunityId: string) {
+    try {
+      if (isSupabaseConfigured) {
+        await deleteSupabaseOpportunity(opportunityId);
+      }
+      setOpportunities((current) => current.filter((item) => item.id !== opportunityId));
+      setMessage(t('messages.opportunityDeleted'));
+    } catch (error) {
+      const errorMessage = getErrorMessage(error) ?? t('messages.opportunityDeleteUnable');
+      setMessage(errorMessage);
+      throw new Error(errorMessage);
     }
   }
 
@@ -990,8 +1021,11 @@ export default function App() {
             opportunities={opportunities}
             canManage={canManageAccounts}
             canApply={viewerRole === 'graduate' && currentAccount?.status === 'active'}
+            isLoading={loadingSupabaseData}
+            loadError={supabaseLoadError || undefined}
             onCreate={createOpportunity}
             onUpdate={updateOpportunity}
+            onDelete={deleteOpportunity}
             onApplyOpportunity={applyForOpportunity}
           />
         )}
