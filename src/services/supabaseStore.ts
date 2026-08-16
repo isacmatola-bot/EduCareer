@@ -195,6 +195,15 @@ export async function updateSupabaseOpportunity(opportunity: Opportunity): Promi
   return opportunityRowToOpportunity(data as SupabaseOpportunityRow);
 }
 
+export async function deleteSupabaseOpportunity(opportunityId: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from('opportunities').delete().eq('id', opportunityId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function applyToSupabaseOpportunity(opportunityId: string): Promise<void> {
   const client = requireSupabase();
   const { data: userData, error: userError } = await client.auth.getUser();

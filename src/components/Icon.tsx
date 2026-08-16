@@ -20,6 +20,7 @@ export type IconName =
   | 'forward'
   | 'add'
   | 'edit'
+  | 'delete'
   | 'close'
   | 'login'
   | 'logout'
@@ -49,6 +50,7 @@ export function Icon({ name }: { name: IconName }) {
       {name === 'forward' && <path d="m9 6 6 6-6 6" />}
       {name === 'add' && <path d="M12 5v14M5 12h14" />}
       {name === 'edit' && <path d="m4 20 4.2-1 10.6-10.6a2.1 2.1 0 0 0-3-3L5.2 16 4 20Zm10.4-13.2 3 3" />}
+      {name === 'delete' && <path d="M5 7h14M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5" />}
       {name === 'close' && <path d="M6 6l12 12M18 6 6 18" />}
       {name === 'login' && <path d="M14 4h5a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-5M10 8l4 4-4 4m4-4H4" />}
       {name === 'logout' && <path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h5m4-12 4 4-4 4m4-4H8" />}
