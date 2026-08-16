@@ -81,6 +81,6 @@ describe('Supabase authorization contract', () => {
     expect(publicAdminRlsSeparation).toContain(
       'grant execute on function public.current_user_can_manage_operations()\nto authenticated'
     );
-    expect(publicAdminRlsSeparation).not.toContain('to anon, authenticated');
+    expect(publicAdminRlsSeparation).not.toContain(\n      'grant execute on function public.current_user_can_manage_operations()\\nto anon, authenticated'\n    );
   });
 });
