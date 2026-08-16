@@ -391,6 +391,42 @@ export async function updateSupabaseAccountProfile(accountId: string, patch: Par
   if (payload?.error) throw new Error(payload.error);
 }
 
+export type SelfServiceAccountPatch = {
+  displayName: string;
+  phone?: string;
+  email?: string;
+  password?: string;
+};
+
+export type SelfServiceAccountResult = {
+  account: UserAccount;
+  emailConfirmationRequired: boolean;
+};
+
+export async function updateOwnSupabaseAccount(
+  patch: SelfServiceAccountPatch
+): Promise<SelfServiceAccountResult> {
+  const client = requireSupabase();
+  const { data, error } = await client.functions.invoke('account-self-service', {
+    body: { action: 'update', patch }
+  });
+  const payload = data as {
+    profile?: SupabaseProfileRow;
+    emailConfirmationRequired?: boolean;
+    error?: string;
+  } | null;
+
+  if (error) throw new Error(await readFunctionError(error, 'Unable to update your account.'));
+  if (payload?.error || !payload?.profile) {
+    throw new Error(payload?.error ?? 'Unable to update your account.');
+  }
+
+  return {
+    account: profileToAccount(payload.profile),
+    emailConfirmationRequired: Boolean(payload.emailConfirmationRequired)
+  };
+}
+
 export async function deleteSupabaseAccountProfile(accountId: string): Promise<void> {
   const client = requireSupabase();
   const { data, error } = await client.functions.invoke('admin-manage-user', {
@@ -578,7 +614,7 @@ function coerceAdminRole(role: string | null): AdminRole {
 }
 
 function coerceStatus(status: string): UserAccount['status'] {
-  if (status === 'active' || status === 'pending' || status === 'disabled') {
+  if (status === 'active' || status === 'pending' || status === 'rejected' || status === 'disabled') {
     return status;
   }
 

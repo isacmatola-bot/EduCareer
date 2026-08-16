@@ -1,0 +1,131 @@
+import { useEffect, useState, type FormEvent } from 'react';
+import type { UserAccount } from '../auth';
+import { Icon } from '../components/Icon';
+import { formatRole, useI18n } from '../i18n';
+import type { SelfServiceAccountPatch } from '../services/supabaseStore';
+
+type AccountPageProps = {
+  account: UserAccount;
+  saving: boolean;
+  onSave: (patch: SelfServiceAccountPatch) => void;
+};
+
+export function AccountPage({ account, saving, onSave }: AccountPageProps) {
+  const { t } = useI18n();
+  const [displayName, setDisplayName] = useState(account.displayName);
+  const [phone, setPhone] = useState(account.phone ?? '');
+  const [email, setEmail] = useState(account.email);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [localError, setLocalError] = useState('');
+
+  useEffect(() => {
+    setDisplayName(account.displayName);
+    setPhone(account.phone ?? '');
+    setEmail(account.email);
+  }, [account]);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLocalError('');
+
+    if (password && password.length < 8) {
+      setLocalError(t('messages.passwordShort'));
+      return;
+    }
+    if (password !== confirmPassword) {
+      setLocalError(t('account.passwordMismatch'));
+      return;
+    }
+
+    onSave({
+      displayName,
+      phone: phone || undefined,
+      email,
+      password: password || undefined
+    });
+    setPassword('');
+    setConfirmPassword('');
+  }
+
+  return (
+    <section className="form-layout account-page">
+      <div className="form-intro">
+        <p className="eyebrow icon-eyebrow"><Icon name="admin" /> {t('account.eyebrow')}</p>
+        <h2>{t('account.title')}</h2>
+        <p>{t('account.body')}</p>
+        <div className="content-card account-summary-card">
+          <p><strong>{t('portal.username')}:</strong> {account.username}</p>
+          <p><strong>{t('portal.accountType')}:</strong> {formatRole(account.role, t)}</p>
+          <p>
+            <strong>{t('portal.status')}:</strong>{' '}
+            <span className={`status-badge status-${account.status}`}>
+              {t(`portal.status.${account.status}`)}
+            </span>
+          </p>
+        </div>
+      </div>
+
+      <form className="form-card" onSubmit={submit}>
+        <h3>{t('account.personalData')}</h3>
+        <label>
+          {t('portal.displayName')}
+          <input
+            required
+            minLength={2}
+            autoComplete="name"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+          />
+        </label>
+        <label>
+          {t('form.phone')}
+          <input
+            type="tel"
+            autoComplete="tel"
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+          />
+        </label>
+        <label>
+          {t('form.email')}
+          <input
+            required
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <small className="muted">{t('account.emailHelp')}</small>
+        </label>
+
+        <h3>{t('account.security')}</h3>
+        <label>
+          {t('account.newPassword')}
+          <input
+            type="password"
+            minLength={8}
+            autoComplete="new-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        <label>
+          {t('account.confirmPassword')}
+          <input
+            type="password"
+            minLength={8}
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+          />
+        </label>
+
+        {localError && <p className="form-error" role="alert">{localError}</p>}
+        <button type="submit" disabled={saving}>
+          {saving ? t('account.saving') : t('actions.save')}
+        </button>
+      </form>
+    </section>
+  );
+}

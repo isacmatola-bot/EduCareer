@@ -3,6 +3,14 @@ import { describe, expect, it } from 'vitest';
 
 const schema = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
 const audit = readFileSync(new URL('../supabase/audit.sql', import.meta.url), 'utf8');
+const accountOperations = readFileSync(
+  new URL('../supabase/migrations/20260816010224_account_operations.sql', import.meta.url),
+  'utf8'
+);
+const publicAdminRlsSeparation = readFileSync(
+  new URL('../supabase/migrations/20260816010301_separate_public_and_admin_rls.sql', import.meta.url),
+  'utf8'
+);
 
 describe('Supabase authorization contract', () => {
   it('recognizes the four operational administrator roles', () => {
@@ -53,5 +61,28 @@ describe('Supabase authorization contract', () => {
       "('public.placements', 'partner_request_id', 'public.partner_requests', 'id', 'SET NULL')"
     );
     expect(audit).toContain("when not actual.convalidated then 'NOT_VALIDATED'");
+  });
+
+  it('supports rejected accounts and verified email synchronization', () => {
+    expect(schema).toContain("status in ('active', 'pending', 'rejected', 'disabled')");
+    expect(accountOperations).toContain('on_auth_user_email_changed');
+    expect(accountOperations).toContain('sync_profile_email_from_auth');
+    expect(accountOperations).toContain(
+      'revoke all on function public.sync_profile_email_from_auth() from public, anon, authenticated'
+    );
+  });
+
+  it('separates public reads from authenticated administrative authorization', () => {
+    expect(publicAdminRlsSeparation).toContain("using (status in ('open', 'upcoming'))");
+    expect(publicAdminRlsSeparation).toContain("using (status = 'published')");
+    expect(publicAdminRlsSeparation).toContain(
+      'revoke all on function public.current_user_can_manage_operations()\nfrom public, anon'
+    );
+    expect(publicAdminRlsSeparation).toContain(
+      'grant execute on function public.current_user_can_manage_operations()\nto authenticated'
+    );
+    expect(publicAdminRlsSeparation).not.toContain(
+      'grant execute on function public.current_user_can_manage_operations()\nto anon, authenticated'
+    );
   });
 });

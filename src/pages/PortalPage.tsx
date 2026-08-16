@@ -77,6 +77,7 @@ export function PortalPage({
     graduates: accounts.filter((item) => item.role === 'graduate').length,
     partners: accounts.filter((item) => item.role === 'partner').length,
     pending: accounts.filter((item) => item.status === 'pending').length,
+    rejected: accounts.filter((item) => item.status === 'rejected').length,
     disabled: accounts.filter((item) => item.status === 'disabled').length
   }), [accounts]);
 
@@ -234,6 +235,7 @@ export function PortalPage({
               <span>{t('portal.graduates', { count: accountStats.graduates })}</span>
               <span>{t('portal.partners', { count: accountStats.partners })}</span>
               <span>{t('portal.pendingAccounts', { count: accountStats.pending })}</span>
+              <span>{t('portal.rejectedAccounts', { count: accountStats.rejected })}</span>
               <span>{t('portal.blocked', { count: accountStats.disabled })}</span>
             </div>
           </div>
@@ -356,6 +358,20 @@ export function PortalPage({
                         {target.status === 'pending' ? t('actions.approve') : t('actions.recover')}
                       </button>
                       <button
+                        className="secondary danger-button"
+                        type="button"
+                        disabled={target.status !== 'pending' || !canManageAccount(account, target)}
+                        onClick={() => onUpdateAccount(target.id, {
+                          displayName: target.displayName,
+                          email: target.email,
+                          phone: target.phone,
+                          status: 'rejected',
+                          adminRole: target.adminRole
+                        })}
+                      >
+                        {t('actions.reject')}
+                      </button>
+                      <button
                         className="secondary"
                         type="button"
                         disabled={protectedAccount || target.status === 'disabled' || !canManageAccount(account, target)}
@@ -411,6 +427,7 @@ export function PortalPage({
                             >
                               <option value="active">{t('portal.status.active')}</option>
                               <option value="pending">{t('portal.status.pending')}</option>
+                              <option value="rejected">{t('portal.status.rejected')}</option>
                               <option value="disabled">{t('portal.status.disabled')}</option>
                             </select>
                           </label>

@@ -39,6 +39,7 @@ import { AboutPage } from './pages/AboutPage';
 import { ContactPage } from './pages/ContactPage';
 import { HomePage } from './pages/HomePage';
 import { OpportunitiesPage } from './pages/OpportunitiesPage';
+import { AccountPage } from './pages/AccountPage';
 import { PartnerFormPage } from './pages/PartnerFormPage';
 import { PortalPage } from './pages/PortalPage';
 import type { AccountUpdatePatch, AdminAccountDraft } from './pages/PortalPage';
@@ -57,8 +58,10 @@ import {
   signOutSupabaseAccount,
   updateSupabaseOpportunity,
   updateSupabaseProgram,
-  updateSupabaseAccountProfile
+  updateSupabaseAccountProfile,
+  updateOwnSupabaseAccount
 } from './services/supabaseStore';
+import type { SelfServiceAccountPatch } from './services/supabaseStore';
 import { isSupabaseConfigured } from './services/supabaseClient';
 import type { CandidateApplication, Opportunity, OpportunityApplication, PartnerRequest, Program, TabId } from './types';
 import { makeId, readFromStorage, writeToStorage } from './utils/storage';
@@ -82,7 +85,8 @@ function translateAuthError(
     'Username must contain at least 3 characters.': 'messages.usernameShort',
     'Password must contain at least 8 characters.': 'messages.passwordShort',
     'This username is already registered. Choose another username or log in.': 'messages.usernameTaken',
-    'This account is disabled. Contact EduCareer support.': 'messages.accountDisabled'
+    'This account is disabled. Contact EduCareer support.': 'messages.accountDisabled',
+    'This account application was rejected. Contact EduCareer support.': 'messages.accountRejected'
   };
 
   return t(authErrorKeys[error] ?? fallbackKey);
@@ -126,6 +130,7 @@ export default function App() {
   const [opportunityApplications, setOpportunityApplications] = useState<OpportunityApplication[]>(() =>
     readFromStorage<OpportunityApplication[]>(opportunityApplicationKey, [])
   );
+  const [savingOwnAccount, setSavingOwnAccount] = useState(false);
   const [accounts, setAccounts] = useState<UserAccount[]>(() =>
     seedDefaultAdmin(readFromStorage<UserAccount[]>(accountKey, []))
   );
@@ -750,6 +755,40 @@ export default function App() {
     }));
   }
 
+  async function updateOwnAccount(patch: SelfServiceAccountPatch) {
+    if (!currentAccount || currentAccount.role === 'admin') {
+      setMessage(t('messages.accountUpdateUnable'));
+      return;
+    }
+
+    setSavingOwnAccount(true);
+    try {
+      if (isSupabaseConfigured) {
+        const result = await updateOwnSupabaseAccount(patch);
+        setAccounts((currentAccounts) => mergeAccount(currentAccounts, result.account));
+        setMessage(result.emailConfirmationRequired
+          ? t('messages.accountUpdatedEmailConfirmation')
+          : t('messages.accountUpdated'));
+      } else {
+        setAccounts((currentAccounts) => currentAccounts.map((account) => (
+          account.id === currentAccount.id
+            ? {
+                ...account,
+                displayName: patch.displayName.trim(),
+                phone: patch.phone?.trim(),
+                email: patch.email?.trim().toLowerCase() || account.email
+              }
+            : account
+        )));
+        setMessage(t('messages.accountUpdated'));
+      }
+    } catch (error) {
+      setMessage(getErrorMessage(error) ?? t('messages.accountUpdateUnable'));
+    } finally {
+      setSavingOwnAccount(false);
+    }
+  }
+
   async function updateAccount(accountId: string, patch: AccountUpdatePatch) {
     const targetAccount = accounts.find((account) => account.id === accountId);
     const isDefaultAdminTarget = targetAccount?.adminRole === 'default_admin' || accountId === 'admin-default';
@@ -972,6 +1011,13 @@ export default function App() {
           <PartnerFormPage form={partnerForm} setForm={setPartnerForm} onSubmit={submitPartner} />
         )}
         {activeTab === 'contact' && <ContactPage onNavigate={navigateTo} />}
+        {activeTab === 'account' && currentAccount && currentAccount.role !== 'admin' && (
+          <AccountPage
+            account={currentAccount}
+            saving={savingOwnAccount}
+            onSave={updateOwnAccount}
+          />
+        )}
         {activeTab === 'portal' && isAdmin && (
           <PortalPage
             account={currentAccount}

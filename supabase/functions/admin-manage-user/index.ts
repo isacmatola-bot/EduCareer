@@ -3,10 +3,9 @@ import {
   type SupabaseClient
 } from 'npm:@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
-};
+const productionOrigin = 'https://edu-career-chi.vercel.app';
+const previewOriginPattern =
+  /^https:\/\/edu-career-[a-z0-9-]+-2kgmcorp\.vercel\.app$/;
 
 const operationalRoles = new Set(['default_admin', 'ceo', 'director', 'it']);
 const adminRoles = new Set([
@@ -21,14 +20,16 @@ type ManageRequest = {
     displayName?: string;
     email?: string;
     phone?: string | null;
-    status?: 'active' | 'pending' | 'disabled';
+    status?: 'active' | 'pending' | 'rejected' | 'disabled';
     adminRole?: string | null;
   };
 };
 
 Deno.serve(async (request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-  if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
+  const origin = allowedOrigin(request);
+  if (!origin) return json({ error: 'Origin not allowed.' }, 403, productionOrigin);
+  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(origin) });
+  if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405, origin);
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -38,8 +39,8 @@ Deno.serve(async (request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const authorization = request.headers.get('Authorization');
 
-    if (!supabaseUrl || !anonKey || !serviceRoleKey) return json({ error: 'Supabase function environment is incomplete.' }, 500);
-    if (!authorization) return json({ error: 'Missing authorization header.' }, 401);
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) return json({ error: 'Supabase function environment is incomplete.' }, 500, origin);
+    if (!authorization) return json({ error: 'Missing authorization header.' }, 401, origin);
 
     const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } });
     const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -50,10 +51,10 @@ Deno.serve(async (request) => {
       }
     });
     const { data: userData, error: userError } = await userClient.auth.getUser();
-    if (userError || !userData.user) return json({ error: 'Unauthorized request.' }, 401);
+    if (userError || !userData.user) return json({ error: 'Unauthorized request.' }, 401, origin);
 
     const body = await request.json() as ManageRequest;
-    if (!body.accountId || !body.action) return json({ error: 'Invalid account operation.' }, 400);
+    if (!body.accountId || !body.action) return json({ error: 'Invalid account operation.' }, 400, origin);
 
     const [{ data: caller }, { data: target }] = await Promise.all([
       serviceClient.from('profiles').select('id, role, admin_role, status').eq('id', userData.user.id).single(),
@@ -61,26 +62,26 @@ Deno.serve(async (request) => {
     ]);
 
     if (!caller || caller.role !== 'admin' || caller.status !== 'active' || !operationalRoles.has(caller.admin_role)) {
-      return json({ error: 'You do not have permission to manage accounts.' }, 403);
+      return json({ error: 'You do not have permission to manage accounts.' }, 403, origin);
     }
-    if (!target) return json({ error: 'Account not found.' }, 404);
+    if (!target) return json({ error: 'Account not found.' }, 404, origin);
 
     const isDefaultAdmin = caller.admin_role === 'default_admin';
     const targetIsAdmin = target.role === 'admin';
-    if (targetIsAdmin && !isDefaultAdmin) return json({ error: 'Only the default admin can manage administrative accounts.' }, 403);
+    if (targetIsAdmin && !isDefaultAdmin) return json({ error: 'Only the default admin can manage administrative accounts.' }, 403, origin);
 
     if (body.action === 'delete') {
-      if (!isDefaultAdmin) return json({ error: 'Only the default admin can delete accounts.' }, 403);
-      if (target.id === caller.id || target.admin_role === 'default_admin') return json({ error: 'The default admin account cannot be deleted.' }, 400);
+      if (!isDefaultAdmin) return json({ error: 'Only the default admin can delete accounts.' }, 403, origin);
+      if (target.id === caller.id || target.admin_role === 'default_admin') return json({ error: 'The default admin account cannot be deleted.' }, 400, origin);
       const { error: deleteError } =
         await serviceClient.auth.admin.deleteUser(target.id);
       if (deleteError) {
         console.error('admin-manage-user: Auth deletion failed', errorDetails(deleteError));
         return json({
           error: describeError(deleteError, 'Unable to delete this account.')
-        }, errorStatus(deleteError, 400));
+        }, errorStatus(deleteError, 400), origin);
       }
-      return json({ success: true }, 200);
+      return json({ success: true }, 200, origin);
     }
 
     const patch = body.patch ?? {};
@@ -89,28 +90,28 @@ Deno.serve(async (request) => {
 
     if (patch.displayName !== undefined) {
       const displayName = patch.displayName.trim();
-      if (displayName.length < 2) return json({ error: 'Display name is required.' }, 400);
+      if (displayName.length < 2) return json({ error: 'Display name is required.' }, 400, origin);
       profilePatch.display_name = displayName;
     }
     if (patch.email !== undefined) {
       const email = patch.email.trim().toLowerCase();
-      if (!email.includes('@')) return json({ error: 'A valid email address is required.' }, 400);
+      if (!email.includes('@')) return json({ error: 'A valid email address is required.' }, 400, origin);
       const { data: emailOwner } = await serviceClient
         .from('profiles').select('id').eq('email', email).neq('id', target.id).maybeSingle();
-      if (emailOwner) return json({ error: 'This email address is already registered.' }, 409);
+      if (emailOwner) return json({ error: 'This email address is already registered.' }, 409, origin);
       profilePatch.email = email;
       authPatch.email = email;
       authPatch.email_confirm = true;
     }
     if (patch.phone !== undefined) profilePatch.phone = patch.phone?.trim() || null;
     if (patch.status !== undefined) {
-      if (!['active', 'pending', 'disabled'].includes(patch.status)) return json({ error: 'Invalid account status.' }, 400);
-      if (target.admin_role === 'default_admin' && patch.status !== 'active') return json({ error: 'The default admin must remain active.' }, 400);
+      if (!['active', 'pending', 'rejected', 'disabled'].includes(patch.status)) return json({ error: 'Invalid account status.' }, 400, origin);
+      if (target.admin_role === 'default_admin' && patch.status !== 'active') return json({ error: 'The default admin must remain active.' }, 400, origin);
       profilePatch.status = patch.status;
     }
     if (patch.adminRole !== undefined && targetIsAdmin) {
-      if (!patch.adminRole || !adminRoles.has(patch.adminRole)) return json({ error: 'Invalid admin hierarchy.' }, 400);
-      if (target.admin_role === 'default_admin' && patch.adminRole !== 'default_admin') return json({ error: 'The default admin hierarchy cannot be changed.' }, 400);
+      if (!patch.adminRole || !adminRoles.has(patch.adminRole)) return json({ error: 'Invalid admin hierarchy.' }, 400, origin);
+      if (target.admin_role === 'default_admin' && patch.adminRole !== 'default_admin') return json({ error: 'The default admin hierarchy cannot be changed.' }, 400, origin);
       profilePatch.admin_role = patch.adminRole;
     }
 
@@ -127,7 +128,7 @@ Deno.serve(async (request) => {
       console.error('admin-manage-user: Auth update failed', errorDetails(authUpdateError));
       return json({
         error: describeError(authUpdateError, 'Unable to update this account.')
-      }, errorStatus(authUpdateError, 400));
+      }, errorStatus(authUpdateError, 400), origin);
     }
 
     const { data: profile, error: profileError } = await serviceClient
@@ -135,14 +136,38 @@ Deno.serve(async (request) => {
     if (profileError) {
       console.error('admin-manage-user: profile update failed', errorDetails(profileError));
       await rollbackAuthUpdate(serviceClient, target);
-      return json({ error: describeError(profileError, 'Unable to save this account profile.') }, 400);
+      return json({ error: describeError(profileError, 'Unable to save this account profile.') }, 400, origin);
     }
-    return json({ profile }, 200);
+    return json({ profile }, 200, origin);
   } catch (error) {
     console.error('admin-manage-user: unexpected failure', errorDetails(error));
-    return json({ error: error instanceof Error ? error.message : 'Unexpected server error.' }, 500);
+    return json({ error: error instanceof Error ? error.message : 'Unexpected server error.' }, 500, origin);
   }
 });
+
+function allowedOrigin(request: Request): string | null {
+  const requestOrigin = request.headers.get('Origin');
+  if (!requestOrigin) return productionOrigin;
+
+  const configuredOrigins = (Deno.env.get('EDUCAREER_ALLOWED_ORIGIN') ?? productionOrigin)
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  return configuredOrigins.includes(requestOrigin) ||
+    previewOriginPattern.test(requestOrigin)
+    ? requestOrigin
+    : null;
+}
+
+function corsHeaders(origin: string) {
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin'
+  };
+}
 
 async function rollbackAuthUpdate(
   serviceClient: SupabaseClient,
@@ -200,9 +225,9 @@ function errorDetails(error: unknown): Record<string, unknown> {
   return { value: error };
 }
 
-function json(payload: unknown, status: number) {
+function json(payload: unknown, status: number, origin: string) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' }
   });
 }

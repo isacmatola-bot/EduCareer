@@ -1,9 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
-};
+const productionOrigin = 'https://edu-career-chi.vercel.app';
+const previewOriginPattern =
+  /^https:\/\/edu-career-[a-z0-9-]+-2kgmcorp\.vercel\.app$/;
 
 type AdminDraft = {
   username?: string;
@@ -15,8 +14,13 @@ type AdminDraft = {
 };
 
 Deno.serve(async (request) => {
+  const origin = allowedOrigin(request);
+  if (!origin) return json({ error: 'Origin not allowed.' }, 403, productionOrigin);
   if (request.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders(origin) });
+  }
+  if (request.method !== 'POST') {
+    return json({ error: 'Method not allowed.' }, 405, origin);
   }
 
   try {
@@ -27,12 +31,12 @@ Deno.serve(async (request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-      return json({ error: 'Supabase function environment is incomplete.' }, 500);
+      return json({ error: 'Supabase function environment is incomplete.' }, 500, origin);
     }
 
     const authorization = request.headers.get('Authorization');
     if (!authorization) {
-      return json({ error: 'Missing authorization header.' }, 401);
+      return json({ error: 'Missing authorization header.' }, 401, origin);
     }
 
     const userClient = createClient(supabaseUrl, anonKey, {
@@ -48,7 +52,7 @@ Deno.serve(async (request) => {
 
     const { data: userData, error: userError } = await userClient.auth.getUser();
     if (userError || !userData.user) {
-      return json({ error: 'Unauthorized request.' }, 401);
+      return json({ error: 'Unauthorized request.' }, 401, origin);
     }
 
     const { data: callerProfile, error: callerError } = await serviceClient
@@ -63,13 +67,13 @@ Deno.serve(async (request) => {
       callerProfile?.admin_role !== 'default_admin' ||
       callerProfile?.status !== 'active'
     ) {
-      return json({ error: 'Only the default admin can create administrative accounts.' }, 403);
+      return json({ error: 'Only the default admin can create administrative accounts.' }, 403, origin);
     }
 
     const draft = await request.json() as AdminDraft;
     const validationError = validateDraft(draft);
     if (validationError) {
-      return json({ error: validationError }, 400);
+      return json({ error: validationError }, 400, origin);
     }
 
     const username = draft.username!.trim().toLowerCase();
@@ -95,7 +99,7 @@ Deno.serve(async (request) => {
     if (createError || !createdUser.user) {
       const message = describeError(createError, 'Unable to create admin account.');
       console.error('admin-create-user: auth user creation failed', errorDetails(createError));
-      return json({ error: message }, errorStatus(createError, 400));
+      return json({ error: message }, errorStatus(createError, 400), origin);
     }
 
     const profile = {
@@ -126,15 +130,39 @@ Deno.serve(async (request) => {
           errorDetails(rollbackError)
         );
       }
-      return json({ error: message }, 400);
+      return json({ error: message }, 400, origin);
     }
 
-    return json({ profile: savedProfile }, 200);
+    return json({ profile: savedProfile }, 200, origin);
   } catch (error) {
     console.error('admin-create-user: unexpected failure', errorDetails(error));
-    return json({ error: describeError(error, 'Unexpected server error.') }, 500);
+    return json({ error: describeError(error, 'Unexpected server error.') }, 500, origin);
   }
 });
+
+function allowedOrigin(request: Request): string | null {
+  const requestOrigin = request.headers.get('Origin');
+  if (!requestOrigin) return productionOrigin;
+
+  const configuredOrigins = (Deno.env.get('EDUCAREER_ALLOWED_ORIGIN') ?? productionOrigin)
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  return configuredOrigins.includes(requestOrigin) ||
+    previewOriginPattern.test(requestOrigin)
+    ? requestOrigin
+    : null;
+}
+
+function corsHeaders(origin: string) {
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin'
+  };
+}
 
 function errorStatus(error: unknown, fallback: number) {
   if (!error || typeof error !== 'object') return fallback;
@@ -181,11 +209,11 @@ function validateDraft(draft: AdminDraft): string | null {
   return null;
 }
 
-function json(payload: unknown, status: number) {
+function json(payload: unknown, status: number, origin: string) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
-      ...corsHeaders,
+      ...corsHeaders(origin),
       'Content-Type': 'application/json'
     }
   });

@@ -50,6 +50,7 @@ describe('authentication', () => {
 
   it('rejects a disabled account returned by Supabase authentication', () => {
     expect(() => assertAccountCanSignIn(account({ status: 'disabled' }))).toThrow('disabled');
+    expect(() => assertAccountCanSignIn(account({ status: 'rejected' }))).toThrow('rejected');
     expect(() => assertAccountCanSignIn(account({ status: 'active' }))).not.toThrow();
   });
 });

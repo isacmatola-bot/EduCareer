@@ -29,7 +29,7 @@ export type UserAccount = {
   email: string;
   phone?: string;
   createdAt: string;
-  status: 'active' | 'pending' | 'disabled';
+  status: 'active' | 'pending' | 'rejected' | 'disabled';
 };
 
 type AccountInput = {
@@ -178,6 +178,9 @@ export function authenticateAccount(accounts: UserAccount[], credentials: LoginF
   if (account.status === 'disabled') {
     return { error: 'This account is disabled. Contact EduCareer support.' };
   }
+  if (account.status === 'rejected') {
+    return { error: 'This account application was rejected. Contact EduCareer support.' };
+  }
 
   return { account };
 }
@@ -185,6 +188,9 @@ export function authenticateAccount(accounts: UserAccount[], credentials: LoginF
 export function assertAccountCanSignIn(account: UserAccount): void {
   if (account.status === 'disabled') {
     throw new Error('This account is disabled. Contact EduCareer support.');
+  }
+  if (account.status === 'rejected') {
+    throw new Error('This account application was rejected. Contact EduCareer support.');
   }
 }
 
