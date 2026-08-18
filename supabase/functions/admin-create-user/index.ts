@@ -13,6 +13,8 @@ type AdminDraft = {
   adminRole?: string;
 };
 
+const adminCreatorRoles = new Set(['default_admin', 'ceo', 'director']);
+
 Deno.serve(async (request) => {
   const origin = allowedOrigin(request);
   if (!origin) return json({ error: 'Origin not allowed.' }, 403, productionOrigin);
@@ -54,20 +56,25 @@ Deno.serve(async (request) => {
     if (userError || !userData.user) {
       return json({ error: 'Unauthorized request.' }, 401, origin);
     }
+    const { data: aalData, error: aalError } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aalError || aalData.currentLevel !== 'aal2') {
+      return json({ error: 'Multi-factor authentication is required for this operation.' }, 403, origin);
+    }
 
     const { data: callerProfile, error: callerError } = await serviceClient
       .from('profiles')
-      .select('role, admin_role, status')
+      .select('role, admin_role, status, must_change_password')
       .eq('id', userData.user.id)
       .single();
 
     if (
       callerError ||
       callerProfile?.role !== 'admin' ||
-      callerProfile?.admin_role !== 'default_admin' ||
-      callerProfile?.status !== 'active'
+      !adminCreatorRoles.has(callerProfile?.admin_role ?? '') ||
+      callerProfile?.status !== 'active' ||
+      callerProfile?.must_change_password
     ) {
-      return json({ error: 'Only the default admin can create administrative accounts.' }, 403, origin);
+      return json({ error: 'Only executive administrators can create administrative accounts.' }, 403, origin);
     }
 
     const draft = await request.json() as AdminDraft;
@@ -110,7 +117,8 @@ Deno.serve(async (request) => {
       phone,
       role: 'admin',
       admin_role: adminRole,
-      status: 'active'
+      status: 'active',
+      must_change_password: true
     };
 
     const { data: savedProfile, error: profileError } = await serviceClient
@@ -132,6 +140,14 @@ Deno.serve(async (request) => {
       }
       return json({ error: message }, 400, origin);
     }
+
+    const { error: auditError } = await serviceClient.from('admin_audit_log').insert({
+      actor_id: userData.user.id,
+      target_id: createdUser.user.id,
+      action: 'admin_account.created',
+      details: { admin_role: adminRole }
+    });
+    if (auditError) console.error('admin-create-user: audit insert failed', errorDetails(auditError));
 
     return json({ profile: savedProfile }, 200, origin);
   } catch (error) {

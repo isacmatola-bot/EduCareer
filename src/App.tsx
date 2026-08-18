@@ -1,12 +1,19 @@
 import type { FormEvent } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   authenticateAccount,
   createAccount,
   seedDefaultAdmin,
   sessionForAccount
 } from './auth';
-import { canDeleteAccount, canManageAccount, canManageOperations } from './auth';
+import {
+  canAssignAdminRole,
+  adminRoleRequiresMfa,
+  canCreateAdminAccount,
+  canDeleteAccount,
+  canManageAccount,
+  hasAdminPermission
+} from './auth';
 import type { AdminRole, AuthSession, LoginForm, RegistrationMode, UserAccount, ViewerRole } from './auth';
 import { AppLayout } from './components/AppLayout';
 import { Notice } from './components/Notice';
@@ -26,6 +33,7 @@ import {
 import { opportunities as initialOpportunities, programs as initialPrograms } from './data';
 import { AdminLoginPage } from './features/admin/AdminLoginPage';
 import { DashboardPage } from './features/admin/DashboardPage';
+import { AdminMfaGate } from './features/admin/AdminMfaGate';
 import {
   createTranslator,
   formatAccountLabel,
@@ -64,6 +72,7 @@ import {
 } from './services/supabaseStore';
 import type { SelfServiceAccountPatch } from './services/supabaseStore';
 import { isSupabaseConfigured } from './services/supabaseClient';
+import { monitorSupabaseAvailability } from './services/monitoring';
 import type { CandidateApplication, Opportunity, OpportunityApplication, PartnerRequest, Program, TabId } from './types';
 import { makeId, readFromStorage, writeToStorage } from './utils/storage';
 
@@ -143,6 +152,8 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [message, setMessage] = useState('');
   const [accessNoticeShown, setAccessNoticeShown] = useState(false);
+  const [mfaVerified, setMfaVerified] = useState(false);
+  const [supabaseAvailable, setSupabaseAvailable] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState<LanguageCode>(() =>
     normalizeLanguage(readFromStorage<string>(languageKey, 'en'))
   );
@@ -158,8 +169,18 @@ export default function App() {
 
   const viewerRole: ViewerRole = currentAccount?.role ?? 'visitor';
   const isAdmin = currentAccount?.role === 'admin';
-  const isDefaultAdmin = currentAccount?.role === 'admin' && currentAccount.adminRole === 'default_admin';
-  const canManageAccounts = canManageOperations(currentAccount);
+  const canManageAccounts = hasAdminPermission(currentAccount, 'accounts.maintain');
+  const canCreateAdmins = canCreateAdminAccount(currentAccount);
+  const canGovernAdmins = canAssignAdminRole(currentAccount);
+  const canManagePrograms = hasAdminPermission(currentAccount, 'programs.manage');
+  const canManageOpportunities = hasAdminPermission(currentAccount, 'opportunities.manage');
+  const requiresAdminMfa = adminRoleRequiresMfa(currentAccount);
+  const confirmMfa = useCallback(() => setMfaVerified(true), []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    return monitorSupabaseAvailability(setSupabaseAvailable);
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -376,7 +397,8 @@ export default function App() {
         setShowWelcome(false);
         setAccessNoticeShown(true);
         setMessage(t('messages.welcomeBack', { name: account.displayName }));
-        navigateTo(landingTabForAccount(account));
+        setMfaVerified(false);
+        navigateTo(account.mustChangePassword ? 'account' : landingTabForAccount(account));
       } catch (error) {
         setLoginError(translateAuthError(getErrorMessage(error), t, 'messages.invalidLogin'));
       }
@@ -425,7 +447,8 @@ export default function App() {
         setShowWelcome(false);
         setAccessNoticeShown(true);
         setMessage(t('messages.adminAccess'));
-        navigateTo('home');
+        setMfaVerified(false);
+        navigateTo(account.mustChangePassword ? 'account' : 'home');
       } catch (error) {
         setLoginError(translateAuthError(getErrorMessage(error), t, 'messages.invalidAdminLogin'));
       }
@@ -450,6 +473,7 @@ export default function App() {
   }
 
   async function logout() {
+    setMfaVerified(false);
     if (isSupabaseConfigured) {
       try {
         await signOutSupabaseAccount();
@@ -735,7 +759,7 @@ export default function App() {
   }
 
   async function createAdminAccount(draft: AdminAccountDraft) {
-    if (!isDefaultAdmin) {
+    if (!canCreateAdmins) {
       setMessage(t('messages.defaultAdminOnlyCreate'));
       return;
     }
@@ -787,7 +811,7 @@ export default function App() {
   }
 
   async function updateOwnAccount(patch: SelfServiceAccountPatch) {
-    if (!currentAccount || currentAccount.role === 'admin') {
+    if (!currentAccount) {
       setMessage(t('messages.accountUpdateUnable'));
       return;
     }
@@ -805,7 +829,7 @@ export default function App() {
           account.id === currentAccount.id
             ? {
                 ...account,
-                displayName: patch.displayName.trim(),
+                displayName: patch.displayName?.trim() ?? account.displayName,
                 phone: patch.phone?.trim(),
                 email: patch.email?.trim().toLowerCase() || account.email
               }
@@ -846,7 +870,7 @@ export default function App() {
           email: patch.email,
           phone: patch.phone,
           status: isDefaultAdminTarget ? 'active' : patch.status,
-          adminRole: isDefaultAdminTarget ? 'default_admin' : patch.adminRole
+          adminRole: canGovernAdmins && !isDefaultAdminTarget ? patch.adminRole : undefined
         });
       } catch (error) {
         setMessage(getErrorMessage(error) ?? t('messages.defaultAdminOnlyEdit'));
@@ -865,7 +889,9 @@ export default function App() {
         email: patch.email,
         phone: patch.phone,
         status: account.adminRole === 'default_admin' || account.id === 'admin-default' ? 'active' : patch.status,
-        adminRole: account.adminRole === 'default_admin' || account.id === 'admin-default' ? 'default_admin' : patch.adminRole
+        adminRole: account.adminRole === 'default_admin' || account.id === 'admin-default'
+          ? 'default_admin'
+          : canGovernAdmins ? patch.adminRole : account.adminRole
       };
     }));
     setMessage(t('messages.accountUpdated'));
@@ -891,7 +917,6 @@ export default function App() {
           email: target?.email,
           phone: target?.phone,
           status: 'active',
-          adminRole: target?.adminRole
         });
       } catch (error) {
         setMessage(getErrorMessage(error) ?? t('messages.defaultAdminOnlyRecover'));
@@ -931,7 +956,6 @@ export default function App() {
           email: target?.email,
           phone: target?.phone,
           status: 'disabled',
-          adminRole: target?.adminRole
         });
       } catch (error) {
         setMessage(getErrorMessage(error) ?? t('messages.defaultAdminOnlyBlock'));
@@ -978,6 +1002,9 @@ export default function App() {
 
   return (
     <I18nProvider language={selectedLanguage}>
+      {isSupabaseConfigured && currentAccount && requiresAdminMfa && !currentAccount.mustChangePassword && !mfaVerified && (
+        <AdminMfaGate account={currentAccount} onVerified={confirmMfa} onLogout={logout} />
+      )}
       <AppLayout
         activeTab={activeTab}
         selectedLanguage={selectedLanguage}
@@ -993,6 +1020,15 @@ export default function App() {
         onOpenLogin={openLogin}
         onLogout={logout}
       >
+        {!supabaseAvailable && (
+          <div className="service-status-banner" role="alert">
+            {selectedLanguage === 'pt'
+              ? 'O serviço de dados está temporariamente indisponível. Algumas ações podem falhar.'
+              : selectedLanguage === 'jp'
+                ? 'データサービスは一時的に利用できません。一部の操作が失敗する可能性があります。'
+                : 'The data service is temporarily unavailable. Some actions may fail.'}
+          </div>
+        )}
         <Notice message={message} onDismiss={() => setMessage('')} />
 
         {showWelcome && (
@@ -1011,7 +1047,7 @@ export default function App() {
         {activeTab === 'programs' && (
           <ProgramsPage
             programs={programs}
-            canManage={canManageAccounts}
+            canManage={canManagePrograms}
             onCreate={createProgram}
             onUpdate={updateProgram}
           />
@@ -1019,7 +1055,7 @@ export default function App() {
         {activeTab === 'opportunities' && (
           <OpportunitiesPage
             opportunities={opportunities}
-            canManage={canManageAccounts}
+            canManage={canManageOpportunities}
             canApply={viewerRole === 'graduate' && currentAccount?.status === 'active'}
             isLoading={loadingSupabaseData}
             loadError={supabaseLoadError || undefined}
@@ -1045,10 +1081,11 @@ export default function App() {
           <PartnerFormPage form={partnerForm} setForm={setPartnerForm} onSubmit={submitPartner} />
         )}
         {activeTab === 'contact' && <ContactPage onNavigate={navigateTo} />}
-        {activeTab === 'account' && currentAccount && currentAccount.role !== 'admin' && (
+        {activeTab === 'account' && currentAccount && (
           <AccountPage
             account={currentAccount}
             saving={savingOwnAccount}
+            securityOnly={Boolean(currentAccount.role === 'admin' && currentAccount.mustChangePassword)}
             onSave={updateOwnAccount}
           />
         )}

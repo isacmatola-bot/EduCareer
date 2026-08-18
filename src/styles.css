@@ -516,6 +516,25 @@ textarea:focus {
   }
 }
 
+.service-status-banner {
+  margin: 0 0 20px;
+  padding: 12px 16px;
+  border: 1px solid #b7791f;
+  border-radius: 10px;
+  background: #fff7d6;
+  color: #6b3f00;
+  font-weight: 700;
+}
+
+.fatal-error-page {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 16px;
+  padding: 32px;
+  text-align: center;
+}
+
 /* Compact vector controls for administration and session utilities. */
 .admin-icon-button,
 .header-utility-row .icon-control {
@@ -1495,6 +1514,23 @@ button:disabled {
   align-content: center;
   gap: 18px;
   padding: clamp(24px, 4vw, 42px);
+}
+
+.mfa-dialog {
+  max-width: 860px;
+}
+
+.mfa-qr-code {
+  width: min(240px, 100%);
+  aspect-ratio: 1;
+  border: 10px solid #fff;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.mfa-dialog code {
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 
 .welcome-panel {

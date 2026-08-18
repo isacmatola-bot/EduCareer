@@ -29,6 +29,7 @@ type SupabaseProfileRow = {
   email: string;
   phone: string | null;
   status: string;
+  must_change_password?: boolean;
   created_at: string;
 };
 
@@ -401,11 +402,53 @@ export async function updateSupabaseAccountProfile(accountId: string, patch: Par
 }
 
 export type SelfServiceAccountPatch = {
-  displayName: string;
+  displayName?: string;
   phone?: string;
   email?: string;
   password?: string;
 };
+
+export type AdminMfaState = {
+  currentLevel: 'aal1' | 'aal2' | null;
+  verifiedFactorId?: string;
+};
+
+export type AdminMfaEnrollment = {
+  factorId: string;
+  qrCode: string;
+  secret: string;
+};
+
+export async function getAdminMfaState(): Promise<AdminMfaState> {
+  const client = requireSupabase();
+  const [aalResult, factorsResult] = await Promise.all([
+    client.auth.mfa.getAuthenticatorAssuranceLevel(),
+    client.auth.mfa.listFactors()
+  ]);
+  if (aalResult.error) throw new Error(aalResult.error.message);
+  if (factorsResult.error) throw new Error(factorsResult.error.message);
+
+  return {
+    currentLevel: aalResult.data.currentLevel === 'aal2' ? 'aal2' : aalResult.data.currentLevel === 'aal1' ? 'aal1' : null,
+    verifiedFactorId: factorsResult.data.totp.find((factor) => factor.status === 'verified')?.id
+  };
+}
+
+export async function startAdminMfaEnrollment(): Promise<AdminMfaEnrollment> {
+  const client = requireSupabase();
+  const { data, error } = await client.auth.mfa.enroll({
+    factorType: 'totp',
+    friendlyName: 'EduCareer Admin'
+  });
+  if (error) throw new Error(error.message);
+  return { factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret };
+}
+
+export async function verifyAdminMfa(factorId: string, code: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.auth.mfa.challengeAndVerify({ factorId, code: code.trim() });
+  if (error) throw new Error(error.message);
+}
 
 export type SelfServiceAccountResult = {
   account: UserAccount;
@@ -521,7 +564,8 @@ function profileToAccount(profile: SupabaseProfileRow): UserAccount {
     email: profile.email,
     phone: profile.phone ?? undefined,
     createdAt: profile.created_at,
-    status: coerceStatus(profile.status)
+    status: coerceStatus(profile.status),
+    mustChangePassword: Boolean(profile.must_change_password)
   };
 }
 

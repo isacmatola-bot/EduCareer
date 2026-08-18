@@ -61,7 +61,7 @@ Deno.serve(async (request) => {
     }
 
     const patch = body.patch ?? {};
-    const profilePatch: Record<string, string | null> = {};
+    const profilePatch: Record<string, string | boolean | null> = {};
     const metadata: Record<string, string> = {
       display_name: currentProfile.display_name,
       phone: currentProfile.phone ?? '',
@@ -81,6 +81,20 @@ Deno.serve(async (request) => {
     }
     if (patch.password !== undefined && patch.password.length < 8) {
       return json({ error: 'Password must contain at least 8 characters.' }, 400, origin);
+    }
+    if (currentProfile.role === 'admin' && currentProfile.must_change_password) {
+      const changesProfile = patch.displayName !== undefined || patch.phone !== undefined || patch.email !== undefined;
+      if (!patch.password || changesProfile) {
+        return json({ error: 'You must set a new password before accessing administrative features.' }, 400, origin);
+      }
+    }
+
+    const mandatoryMfaRoles = new Set(['default_admin', 'ceo', 'director', 'it', 'support']);
+    if (currentProfile.role === 'admin' && !currentProfile.must_change_password && mandatoryMfaRoles.has(currentProfile.admin_role)) {
+      const { data: aalData, error: aalError } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aalError || aalData.currentLevel !== 'aal2') {
+        return json({ error: 'Multi-factor authentication is required to change this administrative account.' }, 403, origin);
+      }
     }
 
     const requestedEmail = patch.email?.trim().toLowerCase();
@@ -106,8 +120,16 @@ Deno.serve(async (request) => {
     if (emailChanged) authPatch.email = requestedEmail;
     if (patch.password) authPatch.password = patch.password;
 
-    const { error: authUpdateError } = await userClient.auth.updateUser(authPatch);
-    if (authUpdateError) return json({ error: authUpdateError.message }, authUpdateError.status ?? 400, origin);
+    const authUpdateError = await updateAuthenticatedUser(
+      supabaseUrl,
+      anonKey,
+      authorization,
+      authPatch
+    );
+    if (authUpdateError) return json({ error: authUpdateError.message }, authUpdateError.status, origin);
+    if (currentProfile.role === 'admin' && currentProfile.must_change_password && patch.password) {
+      profilePatch.must_change_password = false;
+    }
 
     let profile = currentProfile;
     if (Object.keys(profilePatch).length > 0) {
@@ -166,6 +188,44 @@ function errorDetails(error: unknown): Record<string, unknown> {
     };
   }
   return { value: error };
+}
+
+async function updateAuthenticatedUser(
+  supabaseUrl: string,
+  anonKey: string,
+  authorization: string,
+  attributes: {
+    email?: string;
+    password?: string;
+    data?: Record<string, string>;
+  }
+): Promise<{ message: string; status: number } | null> {
+  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': authorization,
+      'apikey': anonKey,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(attributes)
+  });
+
+  if (response.ok) return null;
+
+  let message = 'Unable to update authentication details.';
+  try {
+    const payload = await response.json() as {
+      message?: unknown;
+      msg?: unknown;
+      error_description?: unknown;
+    };
+    const candidate = payload.message ?? payload.msg ?? payload.error_description;
+    if (typeof candidate === 'string' && candidate.trim()) message = candidate.trim();
+  } catch {
+    // Keep the generic message when Auth does not return JSON.
+  }
+
+  return { message, status: response.status || 400 };
 }
 
 function json(payload: unknown, status: number, origin: string) {
