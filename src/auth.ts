@@ -1,3 +1,5 @@
+import { isLocalDemoEnabled } from './config';
+
 export type AccountRole = 'graduate' | 'partner' | 'admin';
 
 export type ViewerRole = AccountRole | 'visitor';
@@ -169,7 +171,7 @@ export function canDeleteAccount(
 }
 
 export function seedDefaultAdmin(accounts: UserAccount[]): UserAccount[] {
-  if (!import.meta.env.DEV) {
+  if (!isLocalDemoEnabled) {
     return accounts;
   }
 

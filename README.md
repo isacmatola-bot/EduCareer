@@ -26,7 +26,7 @@ O objetivo do MVP e demonstrar uma plataforma de transicao entre formacao academ
 
 ## Requisitos
 
-- Node.js `>=22.12.0`
+- Node.js `24.x`
 - npm
 
 Se usa `nvm`, execute:
@@ -53,13 +53,18 @@ http://localhost:3000
 ```bash
 npm run dev        # servidor local
 npm run typecheck  # validacao TypeScript
+npm run test:e2e   # fluxos críticos no Chromium
 npm run build      # build de producao
 npm run preview    # preview local do build
 ```
 
 ## Modo demo local
 
-Sem variaveis Supabase, a aplicacao usa `localStorage` para demonstracao.
+O modo local com `localStorage` fica desativado por padrão. Para testes ou demonstração local, defina explicitamente:
+
+```text
+VITE_ENABLE_LOCAL_DEMO=true
+```
 
 Durante `npm run dev`, uma conta admin demo pode ser criada apenas para ambiente local definindo:
 
@@ -110,6 +115,13 @@ supabase functions deploy admin-manage-user
 5. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` em Environment Variables.
 
 Nao coloque `SUPABASE_SERVICE_ROLE_KEY` nas variaveis frontend da Vercel.
+
+## Operação e beta
+
+- `GET /api/health` verifica a aplicação e o acesso público ao Supabase.
+- O workflow `Production uptime` executa a verificação a cada 15 minutos e abre uma issue quando falha.
+- O plano beta está em `docs/BETA_PLAN.md`.
+- Backup, rollback e resposta a incidentes estão em `docs/OPERATIONS_RUNBOOK.md`.
 
 ## Preparacao para GitHub
 
