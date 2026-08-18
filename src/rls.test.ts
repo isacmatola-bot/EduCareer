@@ -12,11 +12,11 @@ const publicAdminRlsSeparation = readFileSync(
   'utf8'
 );
 const permissionMatrix = readFileSync(
-  new URL('../supabase/migrations/20260818_install_admin_permission_matrix.sql', import.meta.url),
+  new URL('../supabase/migrations/20260818021806_install_admin_permission_matrix.sql', import.meta.url),
   'utf8'
 );
 const mandatoryMfa = readFileSync(
-  new URL('../supabase/migrations/20260818_require_mfa_for_privileged_admins.sql', import.meta.url),
+  new URL('../supabase/migrations/20260818031850_require_mfa_for_privileged_admins.sql', import.meta.url),
   'utf8'
 );
 

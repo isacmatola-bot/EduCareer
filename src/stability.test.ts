@@ -10,7 +10,7 @@ describe('stability baseline', () => {
   });
 
   it('contains the RLS init-plan and foreign-key index repairs', () => {
-    const migration = readFileSync('supabase/migrations/20260818_optimize_indexes_and_rls.sql', 'utf8');
+    const migration = readFileSync('supabase/migrations/20260818033949_optimize_indexes_and_rls.sql', 'utf8');
     expect(migration).toContain('(select auth.uid())');
     expect(migration).toContain('candidates_account_id_idx');
     expect(migration).toContain('legacy_students_profile_id_idx');
