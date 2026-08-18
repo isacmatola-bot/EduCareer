@@ -7,7 +7,8 @@ const productionOrigin = 'https://edu-career-chi.vercel.app';
 const previewOriginPattern =
   /^https:\/\/edu-career-[a-z0-9-]+-2kgmcorp\.vercel\.app$/;
 
-const operationalRoles = new Set(['default_admin', 'ceo', 'director', 'it']);
+const accountManagerRoles = new Set(['default_admin', 'ceo', 'director', 'it', 'support']);
+const governanceRoles = new Set(['default_admin', 'ceo', 'director']);
 const adminRoles = new Set([
   'default_admin', 'ceo', 'director', 'it', 'rh', 'finance', 'programs',
   'opportunities', 'partnerships', 'support', 'statistics'
@@ -52,27 +53,31 @@ Deno.serve(async (request) => {
     });
     const { data: userData, error: userError } = await userClient.auth.getUser();
     if (userError || !userData.user) return json({ error: 'Unauthorized request.' }, 401, origin);
+    const { data: aalData, error: aalError } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aalError || aalData.currentLevel !== 'aal2') {
+      return json({ error: 'Multi-factor authentication is required for account management.' }, 403, origin);
+    }
 
     const body = await request.json() as ManageRequest;
     if (!body.accountId || !body.action) return json({ error: 'Invalid account operation.' }, 400, origin);
 
     const [{ data: caller }, { data: target }] = await Promise.all([
-      serviceClient.from('profiles').select('id, role, admin_role, status').eq('id', userData.user.id).single(),
+      serviceClient.from('profiles').select('id, role, admin_role, status, must_change_password').eq('id', userData.user.id).single(),
       serviceClient.from('profiles').select('*').eq('id', body.accountId).single()
     ]);
 
-    if (!caller || caller.role !== 'admin' || caller.status !== 'active' || !operationalRoles.has(caller.admin_role)) {
+    if (!caller || caller.role !== 'admin' || caller.status !== 'active' || caller.must_change_password || !accountManagerRoles.has(caller.admin_role)) {
       return json({ error: 'You do not have permission to manage accounts.' }, 403, origin);
     }
     if (!target) return json({ error: 'Account not found.' }, 404, origin);
 
-    const isDefaultAdmin = caller.admin_role === 'default_admin';
+    const canGovernAccounts = governanceRoles.has(caller.admin_role);
     const targetIsAdmin = target.role === 'admin';
-    if (targetIsAdmin && !isDefaultAdmin) return json({ error: 'Only the default admin can manage administrative accounts.' }, 403, origin);
+    if (target.admin_role === 'default_admin') return json({ error: 'The default admin account is protected.' }, 400, origin);
 
     if (body.action === 'delete') {
-      if (!isDefaultAdmin) return json({ error: 'Only the default admin can delete accounts.' }, 403, origin);
-      if (target.id === caller.id || target.admin_role === 'default_admin') return json({ error: 'The default admin account cannot be deleted.' }, 400, origin);
+      if (!canGovernAccounts) return json({ error: 'Only executive administrators can delete accounts.' }, 403, origin);
+      if (target.id === caller.id) return json({ error: 'You cannot delete your own account.' }, 400, origin);
       const { error: deleteError } =
         await serviceClient.auth.admin.deleteUser(target.id);
       if (deleteError) {
@@ -81,6 +86,10 @@ Deno.serve(async (request) => {
           error: describeError(deleteError, 'Unable to delete this account.')
         }, errorStatus(deleteError, 400), origin);
       }
+      await writeAuditLog(serviceClient, caller.id, target.id, 'account.deleted', {
+        role: target.role,
+        admin_role: target.admin_role
+      });
       return json({ success: true }, 200, origin);
     }
 
@@ -110,8 +119,8 @@ Deno.serve(async (request) => {
       profilePatch.status = patch.status;
     }
     if (patch.adminRole !== undefined && targetIsAdmin) {
+      if (!canGovernAccounts) return json({ error: 'Only executive administrators can change administrative roles.' }, 403, origin);
       if (!patch.adminRole || !adminRoles.has(patch.adminRole)) return json({ error: 'Invalid admin hierarchy.' }, 400, origin);
-      if (target.admin_role === 'default_admin' && patch.adminRole !== 'default_admin') return json({ error: 'The default admin hierarchy cannot be changed.' }, 400, origin);
       profilePatch.admin_role = patch.adminRole;
     }
 
@@ -138,6 +147,11 @@ Deno.serve(async (request) => {
       await rollbackAuthUpdate(serviceClient, target);
       return json({ error: describeError(profileError, 'Unable to save this account profile.') }, 400, origin);
     }
+    await writeAuditLog(serviceClient, caller.id, target.id, 'account.updated', {
+      fields: Object.keys(profilePatch),
+      target_role: target.role,
+      target_admin_role: target.admin_role
+    });
     return json({ profile }, 200, origin);
   } catch (error) {
     console.error('admin-manage-user: unexpected failure', errorDetails(error));
@@ -189,6 +203,22 @@ async function rollbackAuthUpdate(
   if (error) {
     console.error('admin-manage-user: Auth rollback failed', errorDetails(error));
   }
+}
+
+async function writeAuditLog(
+  serviceClient: SupabaseClient,
+  actorId: string,
+  targetId: string,
+  action: string,
+  details: Record<string, unknown>
+) {
+  const { error } = await serviceClient.from('admin_audit_log').insert({
+    actor_id: actorId,
+    target_id: targetId,
+    action,
+    details
+  });
+  if (error) console.error('admin-manage-user: audit insert failed', errorDetails(error));
 }
 
 function describeError(error: unknown, fallback: string): string {

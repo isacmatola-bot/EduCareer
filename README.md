@@ -61,14 +61,14 @@ npm run preview    # preview local do build
 
 Sem variaveis Supabase, a aplicacao usa `localStorage` para demonstracao.
 
-Durante `npm run dev`, uma conta admin demo e criada apenas para ambiente local:
+Durante `npm run dev`, uma conta admin demo pode ser criada apenas para ambiente local definindo:
 
 ```text
-usuario: default.admin
-senha: EduCareer@2026
+VITE_LOCAL_DEMO_ADMIN_USERNAME=<utilizador-local>
+VITE_LOCAL_DEMO_ADMIN_PASSWORD=<senha-local-forte>
 ```
 
-Esta conta nao deve ser usada em producao. Builds de producao devem usar Supabase Auth.
+Nao configure estas variaveis no Vercel. Builds de producao devem usar Supabase Auth.
 
 ## Configurar Supabase
 

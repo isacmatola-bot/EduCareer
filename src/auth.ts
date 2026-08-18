@@ -15,6 +15,19 @@ export type AdminRole =
   | 'support'
   | 'statistics';
 
+export type AdminPermission =
+  | 'accounts.maintain'
+  | 'accounts.govern'
+  | 'accounts.create_admin'
+  | 'accounts.delete'
+  | 'candidates.manage'
+  | 'partner_requests.manage'
+  | 'programs.manage'
+  | 'opportunities.manage'
+  | 'applications.manage'
+  | 'placements.manage'
+  | 'audit.read';
+
 export type AuthSession =
   | { mode: 'visitor' }
   | { mode: 'account'; accountId: string };
@@ -30,6 +43,7 @@ export type UserAccount = {
   phone?: string;
   createdAt: string;
   status: 'active' | 'pending' | 'rejected' | 'disabled';
+  mustChangePassword?: boolean;
 };
 
 type AccountInput = {
@@ -50,8 +64,8 @@ export type LoginForm = {
 export type RegistrationMode = 'graduate' | 'partner';
 
 const localDemoAdminCredentials = {
-  username: 'default.admin',
-  password: 'EduCareer@2026'
+  username: import.meta.env.VITE_LOCAL_DEMO_ADMIN_USERNAME?.trim(),
+  password: import.meta.env.VITE_LOCAL_DEMO_ADMIN_PASSWORD
 };
 
 export const adminRoleLabels: Record<AdminRole, string> = {
@@ -75,23 +89,71 @@ export const roleLabels: Record<ViewerRole, string> = {
   admin: 'Admin Account'
 };
 
-const operationalAdminRoles: AdminRole[] = ['default_admin', 'ceo', 'director', 'it'];
+const leadershipPermissions: AdminPermission[] = [
+  'accounts.maintain',
+  'accounts.govern',
+  'accounts.create_admin',
+  'accounts.delete',
+  'candidates.manage',
+  'partner_requests.manage',
+  'programs.manage',
+  'opportunities.manage',
+  'applications.manage',
+  'placements.manage',
+  'audit.read'
+];
 
-export function canManageOperations(account: UserAccount | null | undefined): boolean {
+export const adminPermissions: Record<AdminRole, readonly AdminPermission[]> = {
+  default_admin: leadershipPermissions,
+  ceo: leadershipPermissions,
+  director: leadershipPermissions,
+  it: ['accounts.maintain'],
+  support: ['accounts.maintain'],
+  rh: ['candidates.manage', 'applications.manage', 'placements.manage'],
+  finance: [],
+  programs: ['programs.manage'],
+  opportunities: ['opportunities.manage', 'applications.manage', 'placements.manage'],
+  partnerships: ['partner_requests.manage'],
+  statistics: []
+};
+
+const mandatoryMfaRoles: AdminRole[] = ['default_admin', 'ceo', 'director', 'it', 'support'];
+
+export function adminRoleRequiresMfa(account: UserAccount | null | undefined): boolean {
+  return Boolean(account?.role === 'admin' && account.adminRole && mandatoryMfaRoles.includes(account.adminRole));
+}
+
+export function hasAdminPermission(
+  account: UserAccount | null | undefined,
+  permission: AdminPermission
+): boolean {
   return Boolean(
     account?.role === 'admin' &&
     account.status === 'active' &&
+    !account.mustChangePassword &&
     account.adminRole &&
-    operationalAdminRoles.includes(account.adminRole)
+    adminPermissions[account.adminRole].includes(permission)
   );
+}
+
+export function canManageOperations(account: UserAccount | null | undefined): boolean {
+  return hasAdminPermission(account, 'accounts.maintain');
 }
 
 export function canManageAccount(
   actor: UserAccount | null | undefined,
   target: UserAccount | null | undefined
 ): boolean {
-  if (!canManageOperations(actor) || !target) return false;
-  return actor?.adminRole === 'default_admin' || target.role !== 'admin';
+  if (!hasAdminPermission(actor, 'accounts.maintain') || !target) return false;
+  return target.adminRole !== 'default_admin';
+}
+
+export function canAssignAdminRole(account: UserAccount | null | undefined): boolean {
+  return hasAdminPermission(account, 'accounts.govern');
+}
+
+export function canCreateAdminAccount(account: UserAccount | null | undefined): boolean {
+  return hasAdminPermission(account, 'accounts.create_admin');
 }
 
 export function canDeleteAccount(
@@ -99,17 +161,19 @@ export function canDeleteAccount(
   target: UserAccount | null | undefined
 ): boolean {
   return Boolean(
-    actor?.role === 'admin' &&
-    actor.status === 'active' &&
-    actor.adminRole === 'default_admin' &&
+    hasAdminPermission(actor, 'accounts.delete') &&
     target &&
-    target.id !== actor.id &&
+    target.id !== actor?.id &&
     target.adminRole !== 'default_admin'
   );
 }
 
 export function seedDefaultAdmin(accounts: UserAccount[]): UserAccount[] {
   if (!import.meta.env.DEV) {
+    return accounts;
+  }
+
+  if (!localDemoAdminCredentials.username || !localDemoAdminCredentials.password) {
     return accounts;
   }
 

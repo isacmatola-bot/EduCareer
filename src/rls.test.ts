@@ -11,15 +11,28 @@ const publicAdminRlsSeparation = readFileSync(
   new URL('../supabase/migrations/20260816010301_separate_public_and_admin_rls.sql', import.meta.url),
   'utf8'
 );
+const permissionMatrix = readFileSync(
+  new URL('../supabase/migrations/20260818_install_admin_permission_matrix.sql', import.meta.url),
+  'utf8'
+);
+const mandatoryMfa = readFileSync(
+  new URL('../supabase/migrations/20260818_require_mfa_for_privileged_admins.sql', import.meta.url),
+  'utf8'
+);
 
 describe('Supabase authorization contract', () => {
-  it('recognizes the four operational administrator roles', () => {
-    expect(schema).toContain("admin_role in ('default_admin', 'ceo', 'director', 'it')");
+  it('installs a canonical, private role-permission matrix', () => {
+    expect(permissionMatrix).toContain('private.admin_role_permissions');
+    expect(permissionMatrix).toContain('private.current_user_has_permission');
+    expect(permissionMatrix).toContain("'support', 'accounts.maintain'");
+    expect(permissionMatrix).toContain("'programs', 'programs.manage'");
   });
 
-  it('allows operational admins to update non-admin profiles only', () => {
-    expect(schema).toContain('Operational admins can update permitted profiles');
-    expect(schema).toContain("public.current_user_is_default_admin() or role <> 'admin'");
+  it('routes profile mutations through field-aware Edge Functions', () => {
+    expect(permissionMatrix).toContain(
+      'drop policy if exists "Operational admins can update permitted profiles"'
+    );
+    expect(permissionMatrix).toContain('revoke update on table public.profiles from authenticated');
   });
 
   it('forces Auth-aware profile deletion through the server function', () => {
@@ -84,5 +97,25 @@ describe('Supabase authorization contract', () => {
     expect(publicAdminRlsSeparation).not.toContain(
       'grant execute on function public.current_user_can_manage_operations()\nto anon, authenticated'
     );
+  });
+
+  it('separates departmental writes from collective admin read access', () => {
+    expect(permissionMatrix).toContain("private.current_user_has_permission('programs.manage')");
+    expect(permissionMatrix).toContain("private.current_user_has_permission('opportunities.manage')");
+    expect(permissionMatrix).toContain("private.current_user_has_permission('partner_requests.manage')");
+    expect(permissionMatrix).toContain('create policy "Admins can read all programs"');
+    expect(permissionMatrix).toContain('create policy "Admins can read all opportunities"');
+  });
+
+  it('records privileged account operations in an immutable audit table', () => {
+    expect(permissionMatrix).toContain('create table if not exists public.admin_audit_log');
+    expect(permissionMatrix).toContain('revoke all on table public.admin_audit_log');
+    expect(permissionMatrix).toContain("private.current_user_has_permission('audit.read')");
+  });
+
+  it('requires an AAL2 session for privileged administrator permissions', () => {
+    expect(mandatoryMfa).toContain("auth.jwt() ->> 'aal'");
+    expect(mandatoryMfa).toContain("'default_admin', 'ceo', 'director', 'it', 'support'");
+    expect(mandatoryMfa).toContain("= 'aal2'");
   });
 });

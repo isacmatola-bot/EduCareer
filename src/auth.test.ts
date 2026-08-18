@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   authenticateAccount,
+  adminRoleRequiresMfa,
   assertAccountCanSignIn,
+  canAssignAdminRole,
+  canCreateAdminAccount,
   canDeleteAccount,
   canManageAccount,
-  canManageOperations,
+  hasAdminPermission,
   createAccount,
   type AdminRole,
   type UserAccount
@@ -57,29 +60,58 @@ describe('authentication', () => {
 
 describe('administrative permissions', () => {
   const graduate = account();
-  const roles: AdminRole[] = ['default_admin', 'ceo', 'director', 'it'];
+  const leaders: AdminRole[] = ['default_admin', 'ceo', 'director'];
 
-  it.each(roles)('%s can manage operational content and non-admin accounts', (role) => {
+  it.each(leaders)('%s has full governance and departmental permissions', (role) => {
     const actor = admin(role);
-    expect(canManageOperations(actor)).toBe(true);
+    expect(canCreateAdminAccount(actor)).toBe(true);
+    expect(canAssignAdminRole(actor)).toBe(true);
     expect(canManageAccount(actor, graduate)).toBe(true);
-  });
-
-  it.each(['ceo', 'director', 'it'] as AdminRole[])('%s cannot manage admin accounts', (role) => {
-    expect(canManageAccount(admin(role), admin('director'))).toBe(false);
-  });
-
-  it('reserves admin-account management and deletion for the default admin', () => {
-    const actor = admin('default_admin');
     expect(canManageAccount(actor, admin('director'))).toBe(true);
-    expect(canDeleteAccount(actor, graduate)).toBe(true);
-    expect(canDeleteAccount(actor, actor)).toBe(false);
-    expect(canDeleteAccount(admin('ceo'), graduate)).toBe(false);
+    expect(hasAdminPermission(actor, 'programs.manage')).toBe(true);
+    expect(hasAdminPermission(actor, 'opportunities.manage')).toBe(true);
   });
 
-  it('denies operational permissions to inactive admins', () => {
+  it.each(['it', 'support'] as AdminRole[])('%s can maintain all non-protected accounts without governance', (role) => {
+    const actor = admin(role);
+    expect(canManageAccount(actor, graduate)).toBe(true);
+    expect(canManageAccount(actor, admin('director'))).toBe(true);
+    expect(canCreateAdminAccount(actor)).toBe(false);
+    expect(canAssignAdminRole(actor)).toBe(false);
+    expect(hasAdminPermission(actor, 'programs.manage')).toBe(false);
+  });
+
+  it('protects the default admin while allowing executive deletion of other accounts', () => {
+    expect(canManageAccount(admin('ceo'), admin('default_admin'))).toBe(false);
+    expect(canDeleteAccount(admin('ceo'), graduate)).toBe(true);
+    expect(canDeleteAccount(admin('director'), admin('ceo'))).toBe(true);
+    expect(canDeleteAccount(admin('default_admin'), admin('default_admin'))).toBe(false);
+    expect(canDeleteAccount(admin('it'), graduate)).toBe(false);
+  });
+
+  it('gives each department write access only to its own area', () => {
+    expect(hasAdminPermission(admin('programs'), 'programs.manage')).toBe(true);
+    expect(hasAdminPermission(admin('programs'), 'opportunities.manage')).toBe(false);
+    expect(hasAdminPermission(admin('partnerships'), 'partner_requests.manage')).toBe(true);
+    expect(hasAdminPermission(admin('rh'), 'candidates.manage')).toBe(true);
+    expect(hasAdminPermission(admin('statistics'), 'programs.manage')).toBe(false);
+  });
+
+  it('denies permissions to inactive admins and temporary-password sessions', () => {
     const inactive = { ...admin('it'), status: 'disabled' as const };
-    expect(canManageOperations(inactive)).toBe(false);
     expect(canManageAccount(inactive, graduate)).toBe(false);
+    expect(hasAdminPermission(inactive, 'accounts.maintain')).toBe(false);
+
+    const temporary = { ...admin('ceo'), mustChangePassword: true };
+    expect(canCreateAdminAccount(temporary)).toBe(false);
+    expect(hasAdminPermission(temporary, 'programs.manage')).toBe(false);
+  });
+
+  it('requires MFA for executive and account-support roles only', () => {
+    for (const role of ['default_admin', 'ceo', 'director', 'it', 'support'] as AdminRole[]) {
+      expect(adminRoleRequiresMfa(admin(role))).toBe(true);
+    }
+    expect(adminRoleRequiresMfa(admin('programs'))).toBe(false);
+    expect(adminRoleRequiresMfa(graduate)).toBe(false);
   });
 });

@@ -7,10 +7,11 @@ import type { SelfServiceAccountPatch } from '../services/supabaseStore';
 type AccountPageProps = {
   account: UserAccount;
   saving: boolean;
+  securityOnly?: boolean;
   onSave: (patch: SelfServiceAccountPatch) => void;
 };
 
-export function AccountPage({ account, saving, onSave }: AccountPageProps) {
+export function AccountPage({ account, saving, securityOnly = false, onSave }: AccountPageProps) {
   const { t } = useI18n();
   const [displayName, setDisplayName] = useState(account.displayName);
   const [phone, setPhone] = useState(account.phone ?? '');
@@ -38,12 +39,9 @@ export function AccountPage({ account, saving, onSave }: AccountPageProps) {
       return;
     }
 
-    onSave({
-      displayName,
-      phone: phone || undefined,
-      email,
-      password: password || undefined
-    });
+    onSave(securityOnly
+      ? { password: password || undefined }
+      : { displayName, phone: phone || undefined, email, password: password || undefined });
     setPassword('');
     setConfirmPassword('');
   }
@@ -67,6 +65,7 @@ export function AccountPage({ account, saving, onSave }: AccountPageProps) {
       </div>
 
       <form className="form-card" onSubmit={submit}>
+        {!securityOnly && <>
         <h3>{t('account.personalData')}</h3>
         <label>
           {t('portal.displayName')}
@@ -98,12 +97,14 @@ export function AccountPage({ account, saving, onSave }: AccountPageProps) {
           />
           <small className="muted">{t('account.emailHelp')}</small>
         </label>
+        </>}
 
         <h3>{t('account.security')}</h3>
         <label>
           {t('account.newPassword')}
           <input
             type="password"
+            required={securityOnly}
             minLength={8}
             autoComplete="new-password"
             value={password}
@@ -114,6 +115,7 @@ export function AccountPage({ account, saving, onSave }: AccountPageProps) {
           {t('account.confirmPassword')}
           <input
             type="password"
+            required={securityOnly}
             minLength={8}
             autoComplete="new-password"
             value={confirmPassword}

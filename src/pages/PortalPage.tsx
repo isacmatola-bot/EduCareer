@@ -1,7 +1,14 @@
 import type { FormEvent } from 'react';
 import { useMemo, useState } from 'react';
 import type { AdminRole, UserAccount } from '../auth';
-import { adminRoleLabels, canDeleteAccount, canManageAccount, canManageOperations } from '../auth';
+import {
+  adminRoleLabels,
+  canAssignAdminRole,
+  canCreateAdminAccount,
+  canDeleteAccount,
+  canManageAccount,
+  hasAdminPermission
+} from '../auth';
 import { Icon } from '../components/Icon';
 import { formatAdminRole, formatRole, useI18n } from '../i18n';
 import type { TabId } from '../types';
@@ -105,7 +112,9 @@ export function PortalPage({
 
   const isAdmin = account.role === 'admin';
   const isDefaultAdmin = isAdmin && account.adminRole === 'default_admin';
-  const canManageAccounts = canManageOperations(account);
+  const canManageAccounts = hasAdminPermission(account, 'accounts.maintain');
+  const canCreateAdmins = canCreateAdminAccount(account);
+  const canGovernAdmins = canAssignAdminRole(account);
   const hasFullAccess = isAdmin || account.status === 'active';
   const roleLabel = isAdmin && account.adminRole ? formatAdminRole(account.adminRole, t) : formatRole(account.role, t);
   const statusLabel = t(`portal.status.${account.status}`);
@@ -200,7 +209,7 @@ export function PortalPage({
                   : t('portal.adminBody')}
               </p>
               <div className="portal-action-row">
-                {isDefaultAdmin && (
+                {canCreateAdmins && (
                   <button type="button" onClick={() => setShowCreateAdmin((current) => !current)}>
                     <Icon name="admin" />
                     {t('portal.createAdmin')}
@@ -366,7 +375,7 @@ export function PortalPage({
                           email: target.email,
                           phone: target.phone,
                           status: 'rejected',
-                          adminRole: target.adminRole
+                          adminRole: canGovernAdmins ? target.adminRole : undefined
                         })}
                       >
                         {t('actions.reject')}
@@ -432,7 +441,7 @@ export function PortalPage({
                             </select>
                           </label>
                         </div>
-                        {target.role === 'admin' && (
+                        {target.role === 'admin' && canGovernAdmins && (
                           <label>
                             {t('portal.adminHierarchy')}
                             <select
