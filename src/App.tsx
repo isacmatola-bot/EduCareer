@@ -30,6 +30,7 @@ import {
   programKey,
   sessionKey
 } from './constants';
+import { isLocalDemoEnabled } from './config';
 import { opportunities as initialOpportunities, programs as initialPrograms } from './data';
 import { AdminLoginPage } from './features/admin/AdminLoginPage';
 import { DashboardPage } from './features/admin/DashboardPage';
@@ -130,9 +131,11 @@ export default function App() {
   const [partnerForm, setPartnerForm] = useState(blankPartner);
   const [registerMode, setRegisterMode] = useState<RegistrationMode>('graduate');
   const [candidates, setCandidates] = useState<CandidateApplication[]>(() =>
-    readFromStorage<CandidateApplication[]>(candidateKey, [])
+    isLocalDemoEnabled ? readFromStorage<CandidateApplication[]>(candidateKey, []) : []
   );
-  const [partners, setPartners] = useState<PartnerRequest[]>(() => readFromStorage<PartnerRequest[]>(partnerKey, []));
+  const [partners, setPartners] = useState<PartnerRequest[]>(() =>
+    isLocalDemoEnabled ? readFromStorage<PartnerRequest[]>(partnerKey, []) : []
+  );
   const [programs, setPrograms] = useState<Program[]>(() => readFromStorage<Program[]>(programKey, initialPrograms));
   const [opportunities, setOpportunities] = useState<Opportunity[]>(() =>
     readFromStorage<Opportunity[]>(opportunityKey, initialOpportunities)
@@ -144,9 +147,11 @@ export default function App() {
   const [loadingSupabaseData, setLoadingSupabaseData] = useState(isSupabaseConfigured);
   const [supabaseLoadError, setSupabaseLoadError] = useState('');
   const [accounts, setAccounts] = useState<UserAccount[]>(() =>
-    seedDefaultAdmin(readFromStorage<UserAccount[]>(accountKey, []))
+    seedDefaultAdmin(isLocalDemoEnabled ? readFromStorage<UserAccount[]>(accountKey, []) : [])
   );
-  const [session, setSession] = useState<AuthSession | null>(() => readFromStorage<AuthSession | null>(sessionKey, null));
+  const [session, setSession] = useState<AuthSession | null>(() =>
+    isLocalDemoEnabled ? readFromStorage<AuthSession | null>(sessionKey, null) : null
+  );
   const [showWelcome, setShowWelcome] = useState<boolean>(() => !readFromStorage<AuthSession | null>(sessionKey, null));
   const [loginForm, setLoginForm] = useState<LoginForm>(blankLoginForm);
   const [loginError, setLoginError] = useState('');
@@ -183,34 +188,34 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
+    if (isLocalDemoEnabled) {
       writeToStorage(candidateKey, candidates);
     }
   }, [candidates]);
   useEffect(() => {
-    if (!isSupabaseConfigured) {
+    if (isLocalDemoEnabled) {
       writeToStorage(partnerKey, partners);
     }
   }, [partners]);
   useEffect(() => {
-    if (!isSupabaseConfigured) {
+    if (isLocalDemoEnabled) {
       writeToStorage(accountKey, accounts);
     }
   }, [accounts]);
   useEffect(() => {
-    if (!isSupabaseConfigured) {
+    if (isLocalDemoEnabled) {
       writeToStorage(sessionKey, session);
     }
   }, [session]);
   useEffect(() => writeToStorage(languageKey, selectedLanguage), [selectedLanguage]);
   useEffect(() => {
-    if (!isSupabaseConfigured) writeToStorage(programKey, programs);
+    if (isLocalDemoEnabled) writeToStorage(programKey, programs);
   }, [programs]);
   useEffect(() => {
-    if (!isSupabaseConfigured) writeToStorage(opportunityKey, opportunities);
+    if (isLocalDemoEnabled) writeToStorage(opportunityKey, opportunities);
   }, [opportunities]);
   useEffect(() => {
-    if (!isSupabaseConfigured) writeToStorage(opportunityApplicationKey, opportunityApplications);
+    if (isLocalDemoEnabled) writeToStorage(opportunityApplicationKey, opportunityApplications);
   }, [opportunityApplications]);
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -406,6 +411,11 @@ export default function App() {
       return;
     }
 
+    if (!isLocalDemoEnabled) {
+      setLoginError('Authentication service is not configured.');
+      return;
+    }
+
     const result = authenticateAccount(accounts, loginForm);
 
     if (!result.account) {
@@ -453,6 +463,11 @@ export default function App() {
         setLoginError(translateAuthError(getErrorMessage(error), t, 'messages.invalidAdminLogin'));
       }
 
+      return;
+    }
+
+    if (!isLocalDemoEnabled) {
+      setLoginError('Authentication service is not configured.');
       return;
     }
 
@@ -539,6 +554,11 @@ export default function App() {
       return;
     }
 
+    if (!isLocalDemoEnabled) {
+      setMessage(t('messages.unableGraduate'));
+      return;
+    }
+
     const result = createAccount(accounts, {
       role: 'graduate',
       username: candidateForm.username,
@@ -614,6 +634,11 @@ export default function App() {
         setMessage(translateAuthError(getErrorMessage(error), t, 'messages.unablePartner'));
       }
 
+      return;
+    }
+
+    if (!isLocalDemoEnabled) {
+      setMessage(t('messages.unablePartner'));
       return;
     }
 
