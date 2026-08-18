@@ -11,6 +11,7 @@ test('visitor can open the public application', async ({ page }) => {
 test('graduate can complete local-isolated registration flow', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Create Graduate Account/i }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /^OK$/i }).click();
   const suffix = Date.now();
   await page.getByLabel('Username').fill(`graduate.${suffix}`);
   await page.getByLabel('Password').fill('StrongGraduate123!');
@@ -29,6 +30,7 @@ test('graduate can complete local-isolated registration flow', async ({ page }) 
 test('partner can complete local-isolated registration flow', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Create Partner Account/i }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /^OK$/i }).click();
   const suffix = Date.now();
   await page.getByLabel('Username').fill(`partner.${suffix}`);
   await page.getByLabel('Password').fill('StrongPartner123!');
