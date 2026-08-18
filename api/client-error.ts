@@ -1,5 +1,3 @@
-import type { IncomingMessage, ServerResponse } from 'node:http';
-
 type ClientEvent = {
   kind?: string;
   message?: string;
@@ -9,7 +7,17 @@ type ClientEvent = {
   timestamp?: string;
 };
 
-type VercelRequest = IncomingMessage & { body?: ClientEvent | string };
+type VercelRequest = AsyncIterable<Uint8Array | string> & {
+  body?: ClientEvent | string;
+  method?: string;
+  headers: Record<string, string | string[] | undefined>;
+};
+
+type VercelResponse = {
+  statusCode: number;
+  setHeader: (name: string, value: string) => void;
+  end: () => void;
+};
 
 const allowedKinds = new Set([
   'frontend_error',
@@ -48,7 +56,7 @@ async function readBody(request: VercelRequest): Promise<ClientEvent> {
   return JSON.parse(body) as ClientEvent;
 }
 
-export default async function handler(request: VercelRequest, response: ServerResponse): Promise<void> {
+export default async function handler(request: VercelRequest, response: VercelResponse): Promise<void> {
   const startedAt = Date.now();
 
   if (request.method !== 'POST') {
@@ -59,7 +67,8 @@ export default async function handler(request: VercelRequest, response: ServerRe
   }
 
   const origin = Array.isArray(request.headers.origin) ? request.headers.origin[0] : request.headers.origin;
-  if (!originMatchesHost(origin, request.headers.host) || request.headers['sec-fetch-site'] === 'cross-site') {
+  const host = Array.isArray(request.headers.host) ? request.headers.host[0] : request.headers.host;
+  if (!originMatchesHost(origin, host) || request.headers['sec-fetch-site'] === 'cross-site') {
     response.statusCode = 403;
     response.end();
     return;
