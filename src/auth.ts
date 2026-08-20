@@ -119,10 +119,8 @@ export const adminPermissions: Record<AdminRole, readonly AdminPermission[]> = {
   statistics: []
 };
 
-const mandatoryMfaRoles: AdminRole[] = ['default_admin', 'ceo', 'director', 'it', 'support'];
-
 export function adminRoleRequiresMfa(account: UserAccount | null | undefined): boolean {
-  return Boolean(account?.role === 'admin' && account.adminRole && mandatoryMfaRoles.includes(account.adminRole));
+  return Boolean(account?.role === 'admin');
 }
 
 export function hasAdminPermission(
