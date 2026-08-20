@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: supabase-production
@@ -33,7 +34,16 @@ jobs:
         with:
           node-version: 24.x
 
+      - name: Validate required production secrets
+        id: secrets
+        shell: bash
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo 'SUPABASE_ACCESS_TOKEN is missing from the production environment.'; exit 1; }
+          test -n "$SUPABASE_DB_PASSWORD" || { echo 'SUPABASE_DB_PASSWORD is missing from the production environment.'; exit 1; }
+          test -n "$SUPABASE_PROJECT_ID" || { echo 'SUPABASE_PROJECT_ID is missing.'; exit 1; }
+
       - name: Validate migration filenames
+        id: migrations
         run: node scripts/validate-migrations.mjs
 
       - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf
@@ -41,13 +51,53 @@ jobs:
           version: latest
 
       - name: Link production project
+        id: link
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
 
       - name: Verify migration plan
+        id: dry_run
         run: supabase db push --dry-run
 
       - name: Apply pending migrations
+        id: apply
         run: supabase db push
 
       - name: Deploy Edge Functions
+        id: functions
         run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Report synchronization failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SECRETS_OUTCOME: ${{ steps.secrets.outcome }}
+          MIGRATIONS_OUTCOME: ${{ steps.migrations.outcome }}
+          LINK_OUTCOME: ${{ steps.link.outcome }}
+          DRY_RUN_OUTCOME: ${{ steps.dry_run.outcome }}
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
+          FUNCTIONS_OUTCOME: ${{ steps.functions.outcome }}
+        shell: bash
+        run: |
+          title='[monitor] Supabase production sync failed'
+          body=$(cat <<EOF
+          The EduCareer production synchronization workflow failed.
+
+          - Commit: $GITHUB_SHA
+          - Required secrets: ${SECRETS_OUTCOME:-not-run}
+          - Migration validation: ${MIGRATIONS_OUTCOME:-not-run}
+          - Project link: ${LINK_OUTCOME:-not-run}
+          - Dry run: ${DRY_RUN_OUTCOME:-not-run}
+          - Migration apply: ${APPLY_OUTCOME:-not-run}
+          - Edge Functions deploy: ${FUNCTIONS_OUTCOME:-not-run}
+          - Workflow run: $RUN_URL
+
+          No secret values are included in this report.
+          EOF
+          )
+          existing=$(gh issue list --state open --search '"[monitor] Supabase production sync failed" in:title' --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
