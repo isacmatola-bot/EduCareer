@@ -107,11 +107,14 @@ describe('administrative permissions', () => {
     expect(hasAdminPermission(temporary, 'programs.manage')).toBe(false);
   });
 
-  it('requires MFA for executive and account-support roles only', () => {
-    for (const role of ['default_admin', 'ceo', 'director', 'it', 'support'] as AdminRole[]) {
+  it('requires MFA for every administrative role', () => {
+    const roles: AdminRole[] = [
+      'default_admin', 'ceo', 'director', 'it', 'rh', 'finance', 'programs',
+      'opportunities', 'partnerships', 'support', 'statistics'
+    ];
+    for (const role of roles) {
       expect(adminRoleRequiresMfa(admin(role))).toBe(true);
     }
-    expect(adminRoleRequiresMfa(admin('programs'))).toBe(false);
     expect(adminRoleRequiresMfa(graduate)).toBe(false);
   });
 });
