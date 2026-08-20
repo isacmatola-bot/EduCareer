@@ -19,6 +19,10 @@ const mandatoryMfa = readFileSync(
   new URL('../supabase/migrations/20260818031850_require_mfa_for_privileged_admins.sql', import.meta.url),
   'utf8'
 );
+const allAdminMfa = readFileSync(
+  new URL('../supabase/migrations/20260820150000_enforce_mfa_for_all_admin_access.sql', import.meta.url),
+  'utf8'
+);
 
 describe('Supabase authorization contract', () => {
   it('installs a canonical, private role-permission matrix', () => {
@@ -117,5 +121,14 @@ describe('Supabase authorization contract', () => {
     expect(mandatoryMfa).toContain("auth.jwt() ->> 'aal'");
     expect(mandatoryMfa).toContain("'default_admin', 'ceo', 'director', 'it', 'support'");
     expect(mandatoryMfa).toContain("= 'aal2'");
+  });
+
+  it('requires AAL2 for every administrative read and permission path', () => {
+    expect(allAdminMfa).toContain('create or replace function private.current_user_has_permission');
+    expect(allAdminMfa).toContain('create or replace function private.current_user_is_admin');
+    expect(allAdminMfa).toContain('create or replace function private.current_user_is_default_admin');
+    expect(allAdminMfa.match(/auth\.jwt\(\) ->> 'aal'/g)).toHaveLength(3);
+    expect(allAdminMfa.match(/= 'aal2'/g)).toHaveLength(3);
+    expect(allAdminMfa).not.toContain('admin_role not in');
   });
 });
