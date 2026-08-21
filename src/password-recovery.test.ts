@@ -34,6 +34,12 @@ describe('password recovery flow', () => {
     expect(partialFailureIndex).toBeGreaterThan(signOutIndex);
   });
 
+  it('does not initialize Supabase recovery in isolated local demo mode', () => {
+    expect(recoveryUi).toContain("import { isSupabaseConfigured } from '../services/supabaseClient'");
+    expect(recoveryUi).toContain('if (!isSupabaseConfigured) return;');
+    expect(recoveryUi).toContain('if (!isSupabaseConfigured || !open) return null;');
+  });
+
   it('offers forgotten-password recovery from both account and admin login screens', () => {
     expect(welcome).toContain('<ForgotPasswordControl />');
     expect(adminLogin).toContain('<ForgotPasswordControl />');
