@@ -22,6 +22,11 @@ describe('password recovery flow', () => {
     expect(layout).toContain('<PasswordRecoveryBridge />');
   });
 
+  it('counts password recovery as the mandatory first password change for new admins', () => {
+    expect(service).toContain("profile?.role === 'admin' && profile.must_change_password");
+    expect(service).toContain("client.functions.invoke('account-self-service'");
+  });
+
   it('offers forgotten-password recovery from both account and admin login screens', () => {
     expect(welcome).toContain('<ForgotPasswordControl />');
     expect(adminLogin).toContain('<ForgotPasswordControl />');
