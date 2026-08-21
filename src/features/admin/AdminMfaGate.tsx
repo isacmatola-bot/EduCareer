@@ -62,7 +62,9 @@ export function AdminMfaGate({ account, onVerified, onLogout }: AdminMfaGateProp
     setError('');
     try {
       await verifyAdminMfa(selectedFactor, code);
-      onVerified();
+      // The first Supabase snapshot is intentionally loaded while the admin is still AAL1.
+      // Reload after successful elevation so RLS-protected account/domain reads run with AAL2.
+      window.location.reload();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Código MFA inválido.');
       setLoading(false);
