@@ -24,6 +24,47 @@ from public.profiles p
 where p.id = pr.account_id
   and pr.status = 'submitted';
 
+create or replace function public.list_opportunity_applications_for_admin()
+returns table (
+  id uuid,
+  opportunity_id uuid,
+  account_id uuid,
+  status text,
+  created_at timestamptz,
+  updated_at timestamptz,
+  applicant_name text,
+  applicant_username text,
+  applicant_email text,
+  opportunity_title text
+)
+language plpgsql
+security definer
+set search_path = public, private, pg_temp
+as $$
+begin
+  if not private.current_user_has_permission('applications.read') then
+    raise exception 'You do not have permission to read applications.' using errcode = '42501';
+  end if;
+
+  return query
+  select
+    a.id,
+    a.opportunity_id,
+    a.account_id,
+    a.status,
+    a.created_at,
+    a.updated_at,
+    coalesce(p.display_name, p.full_name, p.username, 'Graduate') as applicant_name,
+    coalesce(p.username, '') as applicant_username,
+    coalesce(p.email, '') as applicant_email,
+    coalesce(o.title, 'Opportunity') as opportunity_title
+  from public.opportunity_applications a
+  join public.profiles p on p.id = a.account_id
+  left join public.opportunities o on o.id = a.opportunity_id
+  order by a.created_at desc;
+end;
+$$;
+
 create or replace function public.review_opportunity_application(
   p_application_id uuid,
   p_status text
@@ -171,11 +212,15 @@ begin
 end;
 $$;
 
+revoke all on function public.list_opportunity_applications_for_admin() from public, anon;
 revoke all on function public.review_opportunity_application(uuid, text) from public, anon;
 revoke all on function public.review_partner_request(uuid, text) from public, anon;
+grant execute on function public.list_opportunity_applications_for_admin() to authenticated;
 grant execute on function public.review_opportunity_application(uuid, text) to authenticated;
 grant execute on function public.review_partner_request(uuid, text) to authenticated;
 
+comment on function public.list_opportunity_applications_for_admin() is
+  'Returns application review data to administrators with applications.read at AAL2.';
 comment on function public.review_opportunity_application(uuid, text) is
   'Reviews an opportunity application using RBAC + AAL2 permission checks and writes an audit record.';
 comment on function public.review_partner_request(uuid, text) is
