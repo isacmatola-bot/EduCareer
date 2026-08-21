@@ -3,6 +3,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 const productionOrigin = 'https://edu-career-chi.vercel.app';
 const previewOriginPattern =
   /^https:\/\/edu-career-[a-z0-9-]+-2kgmcorp\.vercel\.app$/;
+const passwordPolicyMessage =
+  'Password must contain at least 12 characters, including at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character.';
 
 type AdminDraft = {
   username?: string;
@@ -211,12 +213,22 @@ function errorStatus(error: unknown, fallback: number) {
   return typeof status === 'number' && status >= 400 && status <= 599 ? status : fallback;
 }
 
+function passwordMeetsPolicy(password: string): boolean {
+  return (
+    password.length >= 12 &&
+    /[a-z]/.test(password) &&
+    /[A-Z]/.test(password) &&
+    /[0-9]/.test(password) &&
+    /[^A-Za-z0-9]/.test(password)
+  );
+}
+
 function validateDraft(draft: AdminDraft): string | null {
   if (!draft.username || draft.username.trim().length < 3) {
     return 'Username must contain at least 3 characters.';
   }
-  if (!draft.password || draft.password.length < 8) {
-    return 'Password must contain at least 8 characters.';
+  if (!draft.password || !passwordMeetsPolicy(draft.password)) {
+    return passwordPolicyMessage;
   }
   if (!draft.email || !draft.email.includes('@')) {
     return 'A valid email address is required.';
