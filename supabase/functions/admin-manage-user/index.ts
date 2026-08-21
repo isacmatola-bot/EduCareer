@@ -52,6 +52,8 @@ Deno.serve(async (request) => {
 
     if (!supabaseUrl || !anonKey || !serviceRoleKey) return json({ error: 'Supabase function environment is incomplete.' }, 500, origin);
     if (!authorization) return json({ error: 'Missing authorization header.' }, 401, origin);
+    const accessToken = bearerAccessToken(authorization);
+    if (!accessToken) return json({ error: 'Invalid authorization header.' }, 401, origin);
 
     const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } });
     const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -63,7 +65,7 @@ Deno.serve(async (request) => {
     });
     const { data: userData, error: userError } = await userClient.auth.getUser();
     if (userError || !userData.user) return json({ error: 'Unauthorized request.' }, 401, origin);
-    const { data: aalData, error: aalError } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+    const { data: aalData, error: aalError } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel(accessToken);
     if (aalError || aalData.currentLevel !== 'aal2') {
       return json({ error: 'Multi-factor authentication is required for account management.' }, 403, origin);
     }
@@ -183,6 +185,12 @@ Deno.serve(async (request) => {
     return json({ error: error instanceof Error ? error.message : 'Unexpected server error.' }, 500, origin);
   }
 });
+
+function bearerAccessToken(authorization: string): string | null {
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  const token = match?.[1]?.trim();
+  return token || null;
+}
 
 function isUsableAccountManager(caller: Profile | null): boolean {
   return Boolean(
