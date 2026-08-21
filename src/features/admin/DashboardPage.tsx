@@ -5,12 +5,15 @@ import { formatAdminRole, useI18n } from '../../i18n';
 import { isSupabaseConfigured, requireSupabase } from '../../services/supabaseClient';
 import {
   loadAdminWorkflow,
+  reviewGraduateRegistration,
   reviewOpportunityApplication,
   reviewPartnerRequest,
   type AdminApplicationReview,
+  type AdminGraduateReview,
   type AdminPartnerReview,
   type ApplicationReviewStatus,
-  type PartnerReviewStatus
+  type PartnerReviewStatus,
+  type RegistrationReviewStatus
 } from '../../services/adminWorkflow';
 import type { CandidateApplication, PartnerRequest } from '../../types';
 
@@ -27,6 +30,7 @@ type DashboardCopy = {
   refresh: string;
   readOnly: string;
   terminal: string;
+  graduateRequests: string;
   submitted: string;
   reviewing: string;
   accepted: string;
@@ -51,6 +55,7 @@ const dashboardCopy: Record<'en' | 'pt' | 'jp', DashboardCopy> = {
     refresh: 'Refresh',
     readOnly: 'Read-only for your administrative role.',
     terminal: 'Final decision recorded. No further status changes are available.',
+    graduateRequests: 'Graduate Account Requests',
     submitted: 'Submitted',
     reviewing: 'Reviewing',
     accepted: 'Accepted',
@@ -73,6 +78,7 @@ const dashboardCopy: Record<'en' | 'pt' | 'jp', DashboardCopy> = {
     refresh: 'Actualizar',
     readOnly: 'Acesso apenas de leitura para a sua função administrativa.',
     terminal: 'Decisão final registada. Não estão disponíveis novas alterações de estado.',
+    graduateRequests: 'Pedidos de Contas Graduate',
     submitted: 'Submetida',
     reviewing: 'Em análise',
     accepted: 'Aceite',
@@ -95,6 +101,7 @@ const dashboardCopy: Record<'en' | 'pt' | 'jp', DashboardCopy> = {
     refresh: '更新',
     readOnly: '現在の管理権限では閲覧のみ可能です。',
     terminal: '最終決定が記録されています。これ以上のステータス変更はできません。',
+    graduateRequests: 'Graduate アカウント申請',
     submitted: '提出済み',
     reviewing: '審査中',
     accepted: '承認済み',
@@ -116,10 +123,13 @@ const dashboardCopy: Record<'en' | 'pt' | 'jp', DashboardCopy> = {
 export function DashboardPage({ stats, candidates, partners, currentAdmin }: DashboardPageProps) {
   const { language, t } = useI18n();
   const copy = dashboardCopy[language];
+  const canReadGraduates = hasAdminPermission(currentAdmin, 'candidates.read');
+  const canManageGraduates = hasAdminPermission(currentAdmin, 'candidates.manage');
   const canReadApplications = hasAdminPermission(currentAdmin, 'applications.read');
   const canManageApplications = hasAdminPermission(currentAdmin, 'applications.manage');
   const canReadPartners = hasAdminPermission(currentAdmin, 'partner_requests.read');
   const canManagePartners = hasAdminPermission(currentAdmin, 'partner_requests.manage');
+  const [graduateReviews, setGraduateReviews] = useState<AdminGraduateReview[]>([]);
   const [applications, setApplications] = useState<AdminApplicationReview[]>([]);
   const [partnerReviews, setPartnerReviews] = useState<AdminPartnerReview[]>([]);
   const [loading, setLoading] = useState(isSupabaseConfigured);
@@ -133,9 +143,11 @@ export function DashboardPage({ stats, candidates, partners, currentAdmin }: Das
     setError('');
     try {
       const workflow = await loadAdminWorkflow({
+        graduates: canReadGraduates,
         applications: canReadApplications,
         partners: canReadPartners
       });
+      setGraduateReviews(workflow.graduates);
       setApplications(workflow.applications);
       setPartnerReviews(workflow.partners);
     } catch (caught) {
@@ -143,17 +155,25 @@ export function DashboardPage({ stats, candidates, partners, currentAdmin }: Das
     } finally {
       setLoading(false);
     }
-  }, [canReadApplications, canReadPartners, copy.loadError, currentAdmin]);
+  }, [canReadApplications, canReadGraduates, canReadPartners, copy.loadError, currentAdmin]);
 
   useEffect(() => {
     void loadWorkflow();
   }, [loadWorkflow]);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !currentAdmin || (!canReadApplications && !canReadPartners)) return;
+    if (!isSupabaseConfigured || !currentAdmin || (!canReadGraduates && !canReadApplications && !canReadPartners)) return;
 
     const client = requireSupabase();
     let channel = client.channel(`admin-workflow-${currentAdmin.id}`);
+
+    if (canReadGraduates) {
+      channel = channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'candidates' },
+        () => void loadWorkflow()
+      );
+    }
 
     if (canReadApplications) {
       channel = channel.on(
@@ -176,14 +196,32 @@ export function DashboardPage({ stats, candidates, partners, currentAdmin }: Das
     return () => {
       void client.removeChannel(channel);
     };
-  }, [canReadApplications, canReadPartners, currentAdmin, loadWorkflow]);
+  }, [canReadApplications, canReadGraduates, canReadPartners, currentAdmin, loadWorkflow]);
 
   const operationalStats = useMemo(() => stats.map((stat, index) => {
     if (!isSupabaseConfigured) return stat;
-    if (index === 0 && canReadApplications) return { ...stat, value: applications.length.toString() };
+    if (index === 0 && canReadGraduates) return { ...stat, value: graduateReviews.length.toString() };
     if (index === 1 && canReadPartners) return { ...stat, value: partnerReviews.length.toString() };
     return stat;
-  }), [applications.length, canReadApplications, canReadPartners, partnerReviews.length, stats]);
+  }), [canReadGraduates, canReadPartners, graduateReviews.length, partnerReviews.length, stats]);
+
+  async function changeGraduateStatus(
+    candidateId: string,
+    status: Exclude<RegistrationReviewStatus, 'submitted'>
+  ) {
+    setBusyId(candidateId);
+    setError('');
+    setSuccess('');
+    try {
+      await reviewGraduateRegistration(candidateId, status);
+      await loadWorkflow();
+      setSuccess(copy.updated);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : copy.loadError);
+    } finally {
+      setBusyId('');
+    }
+  }
 
   async function changeApplicationStatus(
     applicationId: string,
@@ -258,6 +296,16 @@ export function DashboardPage({ stats, candidates, partners, currentAdmin }: Das
 
       {isSupabaseConfigured ? (
         <div className="dashboard-grid">
+          <OperationalGraduateList
+            title={copy.graduateRequests}
+            empty={t('dashboard.noCandidates')}
+            items={graduateReviews}
+            canRead={canReadGraduates}
+            canManage={canManageGraduates}
+            busyId={busyId}
+            copy={copy}
+            onChangeStatus={changeGraduateStatus}
+          />
           <OperationalApplicationList
             title={t('dashboard.candidateApplications')}
             empty={t('dashboard.noCandidates')}
@@ -282,7 +330,7 @@ export function DashboardPage({ stats, candidates, partners, currentAdmin }: Das
       ) : (
         <div className="dashboard-grid">
           <DashboardList
-            title={t('dashboard.candidateApplications')}
+            title={copy.graduateRequests}
             empty={t('dashboard.noCandidates')}
             items={candidates.map((candidate) => ({
               id: candidate.id,
@@ -306,6 +354,56 @@ export function DashboardPage({ stats, candidates, partners, currentAdmin }: Das
         </div>
       )}
     </section>
+  );
+}
+
+function OperationalGraduateList({
+  title,
+  empty,
+  items,
+  canRead,
+  canManage,
+  busyId,
+  copy,
+  onChangeStatus
+}: {
+  title: string;
+  empty: string;
+  items: AdminGraduateReview[];
+  canRead: boolean;
+  canManage: boolean;
+  busyId: string;
+  copy: DashboardCopy;
+  onChangeStatus: (id: string, status: 'reviewing' | 'approved' | 'rejected') => Promise<void>;
+}) {
+  return (
+    <article className="content-card dashboard-list">
+      <h3>{title}</h3>
+      {!canRead ? (
+        <p className="muted">{copy.noAccess}</p>
+      ) : items.length === 0 ? (
+        <p className="muted">{empty}</p>
+      ) : (
+        items.map((item) => (
+          <div className="dashboard-item" key={item.id}>
+            <div className="action-row">
+              <span className={`status ${statusClass(item.status)}`}>{statusLabel(item.status, copy)}</span>
+            </div>
+            <h4>{item.fullName}</h4>
+            <p className="muted">{item.institution} · {item.qualification} · {item.teachingArea}</p>
+            <small>{copy.requestedBy}: {item.username || '—'} · {item.email}</small>
+            <RegistrationDecisionControls
+              itemId={item.id}
+              status={item.status}
+              canManage={canManage}
+              busyId={busyId}
+              copy={copy}
+              onChangeStatus={onChangeStatus}
+            />
+          </div>
+        ))
+      )}
+    </article>
   );
 }
 
@@ -348,26 +446,12 @@ function OperationalApplicationList({
             {canManage ? (
               item.status === 'submitted' ? (
                 <div className="action-row">
-                  <button
-                    className="secondary"
-                    type="button"
-                    disabled={busyId === item.id}
-                    onClick={() => void onChangeStatus(item.id, 'reviewing')}
-                  >{copy.markReviewing}</button>
+                  <button className="secondary" type="button" disabled={busyId === item.id} onClick={() => void onChangeStatus(item.id, 'reviewing')}>{copy.markReviewing}</button>
                 </div>
               ) : item.status === 'reviewing' ? (
                 <div className="action-row">
-                  <button
-                    type="button"
-                    disabled={busyId === item.id}
-                    onClick={() => void onChangeStatus(item.id, 'accepted')}
-                  >{copy.accept}</button>
-                  <button
-                    className="secondary"
-                    type="button"
-                    disabled={busyId === item.id}
-                    onClick={() => void onChangeStatus(item.id, 'rejected')}
-                  >{copy.reject}</button>
+                  <button type="button" disabled={busyId === item.id} onClick={() => void onChangeStatus(item.id, 'accepted')}>{copy.accept}</button>
+                  <button className="secondary" type="button" disabled={busyId === item.id} onClick={() => void onChangeStatus(item.id, 'rejected')}>{copy.reject}</button>
                 </div>
               ) : (
                 <p className="muted">{copy.terminal}</p>
@@ -418,36 +502,14 @@ function OperationalPartnerList({
             <p className="muted">{item.organizationType} · {item.contactPerson}</p>
             <p>{item.supportNeeded}</p>
             <small>{copy.requestedBy}: {item.username || '—'} · {item.email} · {item.phone}</small>
-            {canManage ? (
-              item.status === 'submitted' ? (
-                <div className="action-row">
-                  <button
-                    className="secondary"
-                    type="button"
-                    disabled={busyId === item.id}
-                    onClick={() => void onChangeStatus(item.id, 'reviewing')}
-                  >{copy.markReviewing}</button>
-                </div>
-              ) : item.status === 'reviewing' ? (
-                <div className="action-row">
-                  <button
-                    type="button"
-                    disabled={busyId === item.id}
-                    onClick={() => void onChangeStatus(item.id, 'approved')}
-                  >{copy.approve}</button>
-                  <button
-                    className="secondary"
-                    type="button"
-                    disabled={busyId === item.id}
-                    onClick={() => void onChangeStatus(item.id, 'rejected')}
-                  >{copy.reject}</button>
-                </div>
-              ) : (
-                <p className="muted">{copy.terminal}</p>
-              )
-            ) : (
-              <p className="muted">{copy.readOnly}</p>
-            )}
+            <RegistrationDecisionControls
+              itemId={item.id}
+              status={item.status}
+              canManage={canManage}
+              busyId={busyId}
+              copy={copy}
+              onChangeStatus={onChangeStatus}
+            />
           </div>
         ))
       )}
@@ -455,13 +517,47 @@ function OperationalPartnerList({
   );
 }
 
-function statusClass(status: ApplicationReviewStatus | PartnerReviewStatus): string {
+function RegistrationDecisionControls({
+  itemId,
+  status,
+  canManage,
+  busyId,
+  copy,
+  onChangeStatus
+}: {
+  itemId: string;
+  status: RegistrationReviewStatus;
+  canManage: boolean;
+  busyId: string;
+  copy: DashboardCopy;
+  onChangeStatus: (id: string, status: 'reviewing' | 'approved' | 'rejected') => Promise<void>;
+}) {
+  if (!canManage) return <p className="muted">{copy.readOnly}</p>;
+  if (status === 'submitted') {
+    return (
+      <div className="action-row">
+        <button className="secondary" type="button" disabled={busyId === itemId} onClick={() => void onChangeStatus(itemId, 'reviewing')}>{copy.markReviewing}</button>
+      </div>
+    );
+  }
+  if (status === 'reviewing') {
+    return (
+      <div className="action-row">
+        <button type="button" disabled={busyId === itemId} onClick={() => void onChangeStatus(itemId, 'approved')}>{copy.approve}</button>
+        <button className="secondary" type="button" disabled={busyId === itemId} onClick={() => void onChangeStatus(itemId, 'rejected')}>{copy.reject}</button>
+      </div>
+    );
+  }
+  return <p className="muted">{copy.terminal}</p>;
+}
+
+function statusClass(status: ApplicationReviewStatus | RegistrationReviewStatus): string {
   if (status === 'accepted' || status === 'approved') return 'status-open';
   if (status === 'rejected' || status === 'withdrawn') return 'status-closed';
   return 'status-upcoming';
 }
 
-function statusLabel(status: ApplicationReviewStatus | PartnerReviewStatus, copy: DashboardCopy): string {
+function statusLabel(status: ApplicationReviewStatus | RegistrationReviewStatus, copy: DashboardCopy): string {
   return copy[status as keyof Pick<
     DashboardCopy,
     'submitted' | 'reviewing' | 'accepted' | 'rejected' | 'approved' | 'withdrawn'
