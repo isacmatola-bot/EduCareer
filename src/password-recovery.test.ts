@@ -27,6 +27,13 @@ describe('password recovery flow', () => {
     expect(service).toContain("client.functions.invoke('account-self-service'");
   });
 
+  it('closes the recovery session before reporting a partial admin completion failure', () => {
+    const signOutIndex = service.indexOf('await client.auth.signOut()');
+    const partialFailureIndex = service.indexOf('The password was changed, but the administrative first-login reset');
+    expect(signOutIndex).toBeGreaterThan(-1);
+    expect(partialFailureIndex).toBeGreaterThan(signOutIndex);
+  });
+
   it('offers forgotten-password recovery from both account and admin login screens', () => {
     expect(welcome).toContain('<ForgotPasswordControl />');
     expect(adminLogin).toContain('<ForgotPasswordControl />');
