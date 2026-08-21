@@ -2,6 +2,7 @@ import type { FormEvent } from 'react';
 import type { LoginForm, RegistrationMode } from '../auth';
 import { useI18n } from '../i18n';
 import { Icon } from './Icon';
+import { ForgotPasswordControl } from './PasswordRecovery';
 
 type WelcomeDialogProps = {
   loginForm: LoginForm;
@@ -77,6 +78,8 @@ export function WelcomeDialog({
               />
             </label>
           </div>
+
+          <ForgotPasswordControl />
 
           {loginError && <p className="auth-error">{loginError}</p>}
 
