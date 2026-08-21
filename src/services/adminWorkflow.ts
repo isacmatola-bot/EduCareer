@@ -1,7 +1,22 @@
 import { requireSupabase } from './supabaseClient';
 
 export type ApplicationReviewStatus = 'submitted' | 'reviewing' | 'accepted' | 'rejected' | 'withdrawn';
-export type PartnerReviewStatus = 'submitted' | 'reviewing' | 'approved' | 'rejected';
+export type RegistrationReviewStatus = 'submitted' | 'reviewing' | 'approved' | 'rejected';
+export type PartnerReviewStatus = RegistrationReviewStatus;
+
+export type AdminGraduateReview = {
+  id: string;
+  accountId: string;
+  status: RegistrationReviewStatus;
+  createdAt: string;
+  updatedAt: string;
+  fullName: string;
+  username: string;
+  email: string;
+  institution: string;
+  qualification: string;
+  teachingArea: string;
+};
 
 export type AdminApplicationReview = {
   id: string;
@@ -32,13 +47,29 @@ export type AdminPartnerReview = {
 };
 
 export type AdminWorkflowData = {
+  graduates: AdminGraduateReview[];
   applications: AdminApplicationReview[];
   partners: AdminPartnerReview[];
 };
 
 type WorkflowLoadOptions = {
+  graduates: boolean;
   applications: boolean;
   partners: boolean;
+};
+
+type GraduateRow = {
+  id: string;
+  account_id: string;
+  registration_status: RegistrationReviewStatus;
+  created_at: string;
+  updated_at: string;
+  full_name: string;
+  username: string;
+  email: string;
+  institution: string;
+  qualification: string;
+  teaching_area: string;
 };
 
 type ApplicationRow = {
@@ -72,6 +103,10 @@ type PartnerRow = {
 export async function loadAdminWorkflow(options: WorkflowLoadOptions): Promise<AdminWorkflowData> {
   const client = requireSupabase();
 
+  const graduatePromise = options.graduates
+    ? client.rpc('list_graduate_registrations_for_admin')
+    : Promise.resolve({ data: [] as GraduateRow[], error: null });
+
   const applicationPromise = options.applications
     ? client.rpc('list_opportunity_applications_for_admin')
     : Promise.resolve({ data: [] as ApplicationRow[], error: null });
@@ -83,12 +118,30 @@ export async function loadAdminWorkflow(options: WorkflowLoadOptions): Promise<A
         .order('created_at', { ascending: false })
     : Promise.resolve({ data: [] as PartnerRow[], error: null });
 
-  const [applicationResult, partnerResult] = await Promise.all([applicationPromise, partnerPromise]);
+  const [graduateResult, applicationResult, partnerResult] = await Promise.all([
+    graduatePromise,
+    applicationPromise,
+    partnerPromise
+  ]);
 
+  if (graduateResult.error) throw new Error(graduateResult.error.message);
   if (applicationResult.error) throw new Error(applicationResult.error.message);
   if (partnerResult.error) throw new Error(partnerResult.error.message);
 
   return {
+    graduates: ((graduateResult.data ?? []) as GraduateRow[]).map((row) => ({
+      id: row.id,
+      accountId: row.account_id,
+      status: row.registration_status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      fullName: row.full_name,
+      username: row.username,
+      email: row.email,
+      institution: row.institution,
+      qualification: row.qualification,
+      teachingArea: row.teaching_area
+    })),
     applications: ((applicationResult.data ?? []) as ApplicationRow[]).map((row) => ({
       id: row.id,
       opportunityId: row.opportunity_id,
@@ -116,6 +169,19 @@ export async function loadAdminWorkflow(options: WorkflowLoadOptions): Promise<A
       updatedAt: row.updated_at
     }))
   };
+}
+
+export async function reviewGraduateRegistration(
+  candidateId: string,
+  status: Exclude<RegistrationReviewStatus, 'submitted'>
+): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc('review_graduate_registration', {
+    p_candidate_id: candidateId,
+    p_status: status
+  });
+
+  if (error) throw new Error(error.message);
 }
 
 export async function reviewOpportunityApplication(
