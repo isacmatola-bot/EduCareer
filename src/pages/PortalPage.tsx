@@ -12,7 +12,7 @@ import {
 } from '../auth';
 import { Icon } from '../components/Icon';
 import { formatAdminRole, formatRole, useI18n } from '../i18n';
-import { isSupabaseConfigured } from '../services/supabaseClient';
+import { isSupabaseConfigured, requireSupabase } from '../services/supabaseClient';
 import { loadSupabaseSnapshot } from '../services/supabaseStore';
 import type { TabId } from '../types';
 
@@ -91,19 +91,34 @@ export function PortalPage({
     }
 
     let cancelled = false;
+    const client = requireSupabase();
 
-    void loadSupabaseSnapshot()
-      .then((snapshot) => {
-        if (!cancelled) {
-          setVisibleAccounts(snapshot.accounts);
-        }
-      })
-      .catch(() => {
-        // Keep the parent snapshot as a safe fallback if the refresh fails.
-      });
+    const refreshAccounts = () => {
+      void loadSupabaseSnapshot()
+        .then((snapshot) => {
+          if (!cancelled) {
+            setVisibleAccounts(snapshot.accounts);
+          }
+        })
+        .catch(() => {
+          // Keep the current snapshot as a safe fallback if the refresh fails.
+        });
+    };
+
+    refreshAccounts();
+
+    const channel = client
+      .channel(`admin-accounts-${account.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles' },
+        refreshAccounts
+      )
+      .subscribe();
 
     return () => {
       cancelled = true;
+      void client.removeChannel(channel);
     };
   }, [account?.id, account?.role]);
 

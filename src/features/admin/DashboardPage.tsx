@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { hasAdminPermission, type UserAccount } from '../../auth';
 import { Icon } from '../../components/Icon';
 import { formatAdminRole, useI18n } from '../../i18n';
-import { isSupabaseConfigured } from '../../services/supabaseClient';
+import { isSupabaseConfigured, requireSupabase } from '../../services/supabaseClient';
 import {
   loadAdminWorkflow,
   reviewOpportunityApplication,
@@ -148,6 +148,35 @@ export function DashboardPage({ stats, candidates, partners, currentAdmin }: Das
   useEffect(() => {
     void loadWorkflow();
   }, [loadWorkflow]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !currentAdmin || (!canReadApplications && !canReadPartners)) return;
+
+    const client = requireSupabase();
+    let channel = client.channel(`admin-workflow-${currentAdmin.id}`);
+
+    if (canReadApplications) {
+      channel = channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'opportunity_applications' },
+        () => void loadWorkflow()
+      );
+    }
+
+    if (canReadPartners) {
+      channel = channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'partner_requests' },
+        () => void loadWorkflow()
+      );
+    }
+
+    channel.subscribe();
+
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [canReadApplications, canReadPartners, currentAdmin, loadWorkflow]);
 
   const operationalStats = useMemo(() => stats.map((stat, index) => {
     if (!isSupabaseConfigured) return stat;
