@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AdminRole, UserAccount } from '../auth';
 import {
   adminRoleLabels,
@@ -12,6 +12,8 @@ import {
 } from '../auth';
 import { Icon } from '../components/Icon';
 import { formatAdminRole, formatRole, useI18n } from '../i18n';
+import { isSupabaseConfigured } from '../services/supabaseClient';
+import { loadSupabaseSnapshot } from '../services/supabaseStore';
 import type { TabId } from '../types';
 
 export type AdminAccountDraft = {
@@ -77,15 +79,42 @@ export function PortalPage({
   const [adminDraft, setAdminDraft] = useState(blankAdminDraft);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<AccountEditDraft | null>(null);
+  const [visibleAccounts, setVisibleAccounts] = useState(accounts);
+
+  useEffect(() => {
+    setVisibleAccounts(accounts);
+  }, [accounts]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || account?.role !== 'admin') {
+      return;
+    }
+
+    let cancelled = false;
+
+    void loadSupabaseSnapshot()
+      .then((snapshot) => {
+        if (!cancelled) {
+          setVisibleAccounts(snapshot.accounts);
+        }
+      })
+      .catch(() => {
+        // Keep the parent snapshot as a safe fallback if the refresh fails.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [account?.id, account?.role]);
 
   const accountStats = useMemo(() => ({
-    admins: accounts.filter((item) => item.role === 'admin').length,
-    graduates: accounts.filter((item) => item.role === 'graduate').length,
-    partners: accounts.filter((item) => item.role === 'partner').length,
-    pending: accounts.filter((item) => item.status === 'pending').length,
-    rejected: accounts.filter((item) => item.status === 'rejected').length,
-    disabled: accounts.filter((item) => item.status === 'disabled').length
-  }), [accounts]);
+    admins: visibleAccounts.filter((item) => item.role === 'admin').length,
+    graduates: visibleAccounts.filter((item) => item.role === 'graduate').length,
+    partners: visibleAccounts.filter((item) => item.role === 'partner').length,
+    pending: visibleAccounts.filter((item) => item.status === 'pending').length,
+    rejected: visibleAccounts.filter((item) => item.status === 'rejected').length,
+    disabled: visibleAccounts.filter((item) => item.status === 'disabled').length
+  }), [visibleAccounts]);
 
   if (!account) {
     return (
@@ -335,7 +364,7 @@ export function PortalPage({
 
           {showAccounts ? (
             <div className="account-list">
-              {accounts.map((target) => {
+              {visibleAccounts.map((target) => {
                 const isDefaultAdminTarget = target.id === 'admin-default' || target.adminRole === 'default_admin';
                 const protectedAccount = target.id === account.id || isDefaultAdminTarget;
                 const isEditing = editingAccountId === target.id && editDraft;
