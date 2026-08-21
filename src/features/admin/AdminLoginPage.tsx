@@ -1,5 +1,6 @@
 import type { FormEvent } from 'react';
 import { Icon } from '../../components/Icon';
+import { ForgotPasswordControl } from '../../components/PasswordRecovery';
 import { useI18n } from '../../i18n';
 
 type AdminLoginPageProps = {
@@ -33,12 +34,12 @@ export function AdminLoginPage({
       <form className="form-card" onSubmit={onSubmit}>
         <div className="credential-panel admin-credential-panel">
           <div className="credential-panel-heading">
-              <span><Icon name="admin" /></span>
-              <div>
+            <span><Icon name="admin" /></span>
+            <div>
               <h3>{t('adminLogin.credentials')}</h3>
               <p>{t('adminLogin.credentialsBody')}</p>
-              </div>
             </div>
+          </div>
           <div className="form-grid">
             <label>
               {t('form.username')}
@@ -63,6 +64,8 @@ export function AdminLoginPage({
             </label>
           </div>
         </div>
+
+        <ForgotPasswordControl />
 
         {adminError && <p className="muted">{adminError}</p>}
 

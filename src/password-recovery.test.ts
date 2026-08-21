@@ -1,0 +1,47 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+const service = readFileSync(new URL('./services/passwordRecovery.ts', import.meta.url), 'utf8');
+const recoveryUi = readFileSync(new URL('./components/PasswordRecovery.tsx', import.meta.url), 'utf8');
+const welcome = readFileSync(new URL('./components/WelcomeDialog.tsx', import.meta.url), 'utf8');
+const adminLogin = readFileSync(new URL('./features/admin/AdminLoginPage.tsx', import.meta.url), 'utf8');
+const layout = readFileSync(new URL('./components/AppLayout.tsx', import.meta.url), 'utf8');
+
+describe('password recovery flow', () => {
+  it('sends a Supabase recovery email without exposing account existence', () => {
+    expect(service).toContain('resetPasswordForEmail(email');
+    expect(service).toContain('redirectTo: window.location.origin');
+    expect(service).toContain("if (error || typeof data !== 'string' || !data.includes('@'))");
+    expect(recoveryUi).toContain('If the account exists');
+  });
+
+  it('handles the recovery event, updates the password, and closes the temporary session', () => {
+    expect(service).toContain("event === 'PASSWORD_RECOVERY'");
+    expect(service).toContain('client.auth.updateUser({ password })');
+    expect(service).toContain('await client.auth.signOut()');
+    expect(layout).toContain('<PasswordRecoveryBridge />');
+  });
+
+  it('counts password recovery as the mandatory first password change for new admins', () => {
+    expect(service).toContain("profile?.role === 'admin' && profile.must_change_password");
+    expect(service).toContain("client.functions.invoke('account-self-service'");
+  });
+
+  it('closes the recovery session before reporting a partial admin completion failure', () => {
+    const signOutIndex = service.indexOf('await client.auth.signOut()');
+    const partialFailureIndex = service.indexOf('The password was changed, but the administrative first-login reset');
+    expect(signOutIndex).toBeGreaterThan(-1);
+    expect(partialFailureIndex).toBeGreaterThan(signOutIndex);
+  });
+
+  it('does not initialize Supabase recovery in isolated local demo mode', () => {
+    expect(recoveryUi).toContain("import { isSupabaseConfigured } from '../services/supabaseClient'");
+    expect(recoveryUi).toContain('if (!isSupabaseConfigured) return;');
+    expect(recoveryUi).toContain('if (!isSupabaseConfigured || !open) return null;');
+  });
+
+  it('offers forgotten-password recovery from both account and admin login screens', () => {
+    expect(welcome).toContain('<ForgotPasswordControl />');
+    expect(adminLogin).toContain('<ForgotPasswordControl />');
+  });
+});

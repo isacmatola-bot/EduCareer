@@ -6,6 +6,7 @@ import { useI18n, type LanguageCode } from '../i18n';
 import { routeForTab } from '../router';
 import type { TabId } from '../types';
 import { Icon } from './Icon';
+import { PasswordRecoveryBridge } from './PasswordRecovery';
 
 type AppLayoutProps = {
   activeTab: TabId;
@@ -57,6 +58,7 @@ export function AppLayout({
 
   return (
     <div className="app-shell">
+      <PasswordRecoveryBridge />
       <header className="site-header">
         <div className="header-identity">
           <div className="movement-controls" aria-label={t('aria.movementControls')}>
