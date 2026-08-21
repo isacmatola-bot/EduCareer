@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { UserAccount } from '../auth';
 import { Icon } from '../components/Icon';
 import { formatRole, useI18n } from '../i18n';
+import { passwordMeetsPolicy, passwordPolicyMessage, passwordPolicyPattern } from '../security/passwordPolicy';
 import type { SelfServiceAccountPatch } from '../services/supabaseStore';
 
 type AccountPageProps = {
@@ -30,8 +31,8 @@ export function AccountPage({ account, saving, securityOnly = false, onSave }: A
     event.preventDefault();
     setLocalError('');
 
-    if (password && password.length < 8) {
-      setLocalError(t('messages.passwordShort'));
+    if (password && !passwordMeetsPolicy(password)) {
+      setLocalError(passwordPolicyMessage);
       return;
     }
     if (password !== confirmPassword) {
@@ -106,10 +107,13 @@ export function AccountPage({ account, saving, securityOnly = false, onSave }: A
             type="password"
             required={securityOnly}
             minLength={8}
+            pattern={passwordPolicyPattern}
+            title={passwordPolicyMessage}
             autoComplete="new-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
+          <small className="form-hint">{passwordPolicyMessage}</small>
         </label>
         <label>
           {t('account.confirmPassword')}
@@ -117,6 +121,8 @@ export function AccountPage({ account, saving, securityOnly = false, onSave }: A
             type="password"
             required={securityOnly}
             minLength={8}
+            pattern={passwordPolicyPattern}
+            title={passwordPolicyMessage}
             autoComplete="new-password"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}

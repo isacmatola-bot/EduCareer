@@ -2,6 +2,7 @@ import type { FormEvent } from 'react';
 import { Icon } from '../components/Icon';
 import type { PartnerFormState } from '../constants';
 import { useI18n } from '../i18n';
+import { passwordPolicyMessage, passwordPolicyPattern } from '../security/passwordPolicy';
 
 type PartnerFormPageProps = {
   form: PartnerFormState;
@@ -51,11 +52,14 @@ export function PartnerFormPage({ form, setForm, onSubmit }: PartnerFormPageProp
               <input
                 required
                 minLength={8}
+                pattern={passwordPolicyPattern}
+                title={passwordPolicyMessage}
                 type="password"
                 autoComplete="new-password"
                 value={form.password}
                 onChange={(event) => setForm({ ...form, password: event.target.value })}
               />
+              <small className="form-hint">{passwordPolicyMessage}</small>
             </label>
           </div>
         </div>
