@@ -3,7 +3,7 @@ import { Icon } from '../components/Icon';
 import type { CandidateFormState } from '../constants';
 import { programs } from '../data';
 import { localizeProgram, useI18n } from '../i18n';
-import { passwordPolicyMessage, passwordPolicyPattern } from '../security/passwordPolicy';
+import { passwordPolicyMessage, passwordPolicyMinLength, passwordPolicyPattern } from '../security/passwordPolicy';
 
 type CandidateFormPageProps = {
   form: CandidateFormState;
@@ -24,12 +24,12 @@ export function CandidateFormPage({ form, setForm, onSubmit }: CandidateFormPage
       <form className="form-card" onSubmit={onSubmit}>
         <div className="credential-panel">
           <div className="credential-panel-heading">
-              <span><Icon name="admin" /></span>
-              <div>
+            <span><Icon name="admin" /></span>
+            <div>
               <h3>{t('form.credentialsTitle')}</h3>
               <p>{t('form.credentialsGraduate')}</p>
-              </div>
             </div>
+          </div>
           <div className="form-grid">
             <label>
               {t('form.username')}
@@ -44,15 +44,16 @@ export function CandidateFormPage({ form, setForm, onSubmit }: CandidateFormPage
               {t('form.password')}
               <input
                 required
-                minLength={8}
+                minLength={passwordPolicyMinLength}
                 pattern={passwordPolicyPattern}
                 title={passwordPolicyMessage}
+                aria-describedby="graduate-password-requirements"
                 type="password"
                 autoComplete="new-password"
                 value={form.password}
                 onChange={(event) => setForm({ ...form, password: event.target.value })}
               />
-              <small className="form-hint">{passwordPolicyMessage}</small>
+              <p id="graduate-password-requirements" className="form-hint" role="note">{passwordPolicyMessage}</p>
             </label>
           </div>
         </div>
