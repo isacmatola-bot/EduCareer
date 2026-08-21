@@ -5,8 +5,10 @@ import {
   assertAccountCanSignIn,
   canAssignAdminRole,
   canCreateAdminAccount,
+  canCreateAdminRole,
   canDeleteAccount,
   canManageAccount,
+  canManageAdminRole,
   hasAdminPermission,
   createAccount,
   type AdminRole,
@@ -58,48 +60,103 @@ describe('authentication', () => {
   });
 });
 
-describe('administrative permissions', () => {
+describe('administrative hierarchy', () => {
   const graduate = account();
-  const leaders: AdminRole[] = ['default_admin', 'ceo', 'director'];
 
-  it.each(leaders)('%s has full governance and departmental permissions', (role) => {
-    const actor = admin(role);
-    expect(canCreateAdminAccount(actor)).toBe(true);
-    expect(canAssignAdminRole(actor)).toBe(true);
-    expect(canManageAccount(actor, graduate)).toBe(true);
-    expect(canManageAccount(actor, admin('director'))).toBe(true);
-    expect(hasAdminPermission(actor, 'programs.manage')).toBe(true);
-    expect(hasAdminPermission(actor, 'opportunities.manage')).toBe(true);
+  it('makes the default admin the only role that can manage a CEO', () => {
+    expect(canManageAdminRole('default_admin', 'ceo')).toBe(true);
+    expect(canManageAdminRole('ceo', 'ceo')).toBe(false);
+    expect(canManageAdminRole('director', 'ceo')).toBe(false);
+    expect(canManageAccount(admin('default_admin'), admin('ceo'))).toBe(true);
+    expect(canManageAccount(admin('ceo'), admin('ceo', 'ceo-peer'))).toBe(false);
   });
 
-  it.each(['it', 'support'] as AdminRole[])('%s can maintain all non-protected accounts without governance', (role) => {
+  it('allows CEO to manage Director and department admins, but not root or peer CEO', () => {
+    const ceo = admin('ceo');
+    expect(canManageAccount(ceo, admin('director'))).toBe(true);
+    expect(canManageAccount(ceo, admin('programs'))).toBe(true);
+    expect(canManageAccount(ceo, admin('default_admin'))).toBe(false);
+    expect(canManageAccount(ceo, admin('ceo', 'ceo-peer'))).toBe(false);
+  });
+
+  it('limits Director governance to department admins and user accounts', () => {
+    const director = admin('director');
+    expect(canManageAccount(director, graduate)).toBe(true);
+    expect(canManageAccount(director, admin('rh'))).toBe(true);
+    expect(canManageAccount(director, admin('director', 'director-peer'))).toBe(false);
+    expect(canManageAccount(director, admin('ceo'))).toBe(false);
+  });
+
+  it.each(['it', 'support'] as AdminRole[])('%s can maintain public-user accounts but no admin account', (role) => {
     const actor = admin(role);
     expect(canManageAccount(actor, graduate)).toBe(true);
-    expect(canManageAccount(actor, admin('director'))).toBe(true);
+    expect(canManageAccount(actor, admin('programs'))).toBe(false);
+    expect(canManageAccount(actor, admin('director'))).toBe(false);
     expect(canCreateAdminAccount(actor)).toBe(false);
     expect(canAssignAdminRole(actor)).toBe(false);
-    expect(hasAdminPermission(actor, 'programs.manage')).toBe(false);
   });
 
-  it('protects the default admin while allowing executive deletion of other accounts', () => {
-    expect(canManageAccount(admin('ceo'), admin('default_admin'))).toBe(false);
-    expect(canDeleteAccount(admin('ceo'), graduate)).toBe(true);
-    expect(canDeleteAccount(admin('director'), admin('ceo'))).toBe(true);
-    expect(canDeleteAccount(admin('default_admin'), admin('default_admin'))).toBe(false);
+  it('never allows creation or assignment of default_admin', () => {
+    expect(canCreateAdminRole(admin('default_admin'), 'default_admin')).toBe(false);
+    expect(canCreateAdminRole(admin('ceo'), 'default_admin')).toBe(false);
+    expect(canCreateAdminRole(admin('director'), 'default_admin')).toBe(false);
+  });
+
+  it('applies creation hierarchy by actor level', () => {
+    expect(canCreateAdminRole(admin('default_admin'), 'ceo')).toBe(true);
+    expect(canCreateAdminRole(admin('default_admin'), 'director')).toBe(true);
+    expect(canCreateAdminRole(admin('ceo'), 'ceo')).toBe(false);
+    expect(canCreateAdminRole(admin('ceo'), 'director')).toBe(true);
+    expect(canCreateAdminRole(admin('ceo'), 'finance')).toBe(true);
+    expect(canCreateAdminRole(admin('director'), 'director')).toBe(false);
+    expect(canCreateAdminRole(admin('director'), 'programs')).toBe(true);
+  });
+
+  it('prevents executive deletion across the same or higher hierarchy', () => {
+    expect(canDeleteAccount(admin('default_admin'), admin('ceo'))).toBe(true);
+    expect(canDeleteAccount(admin('ceo'), admin('director'))).toBe(true);
+    expect(canDeleteAccount(admin('ceo'), admin('ceo', 'ceo-peer'))).toBe(false);
+    expect(canDeleteAccount(admin('director'), admin('ceo'))).toBe(false);
+    expect(canDeleteAccount(admin('director'), admin('rh'))).toBe(true);
     expect(canDeleteAccount(admin('it'), graduate)).toBe(false);
   });
+});
 
-  it('gives each department write access only to its own area', () => {
+describe('administrative permissions', () => {
+  it('separates read and manage permissions by department', () => {
+    expect(hasAdminPermission(admin('programs'), 'programs.read')).toBe(true);
     expect(hasAdminPermission(admin('programs'), 'programs.manage')).toBe(true);
-    expect(hasAdminPermission(admin('programs'), 'opportunities.manage')).toBe(false);
+    expect(hasAdminPermission(admin('programs'), 'candidates.read')).toBe(false);
+
+    expect(hasAdminPermission(admin('partnerships'), 'partner_requests.read')).toBe(true);
     expect(hasAdminPermission(admin('partnerships'), 'partner_requests.manage')).toBe(true);
-    expect(hasAdminPermission(admin('rh'), 'candidates.manage')).toBe(true);
-    expect(hasAdminPermission(admin('statistics'), 'programs.manage')).toBe(false);
+
+    expect(hasAdminPermission(admin('rh'), 'candidates.read')).toBe(true);
+    expect(hasAdminPermission(admin('rh'), 'applications.manage')).toBe(true);
+    expect(hasAdminPermission(admin('rh'), 'partner_requests.read')).toBe(false);
+  });
+
+  it('keeps Finance and Statistics away from raw operational records', () => {
+    expect(hasAdminPermission(admin('finance'), 'finance.read')).toBe(true);
+    expect(hasAdminPermission(admin('finance'), 'candidates.read')).toBe(false);
+    expect(hasAdminPermission(admin('finance'), 'partner_requests.read')).toBe(false);
+
+    expect(hasAdminPermission(admin('statistics'), 'statistics.read_aggregate')).toBe(true);
+    expect(hasAdminPermission(admin('statistics'), 'candidates.read')).toBe(false);
+    expect(hasAdminPermission(admin('statistics'), 'applications.read')).toBe(false);
+  });
+
+  it('limits IT and Support reads to public-user account scope', () => {
+    for (const role of ['it', 'support'] as AdminRole[]) {
+      expect(hasAdminPermission(admin(role), 'accounts.read_users')).toBe(true);
+      expect(hasAdminPermission(admin(role), 'accounts.read_all')).toBe(false);
+      expect(hasAdminPermission(admin(role), 'accounts.maintain')).toBe(true);
+    }
   });
 
   it('denies permissions to inactive admins and temporary-password sessions', () => {
     const inactive = { ...admin('it'), status: 'disabled' as const };
-    expect(canManageAccount(inactive, graduate)).toBe(false);
+    expect(canManageAccount(inactive, account())).toBe(false);
     expect(hasAdminPermission(inactive, 'accounts.maintain')).toBe(false);
 
     const temporary = { ...admin('ceo'), mustChangePassword: true };
@@ -115,6 +172,6 @@ describe('administrative permissions', () => {
     for (const role of roles) {
       expect(adminRoleRequiresMfa(admin(role))).toBe(true);
     }
-    expect(adminRoleRequiresMfa(graduate)).toBe(false);
+    expect(adminRoleRequiresMfa(account())).toBe(false);
   });
 });
