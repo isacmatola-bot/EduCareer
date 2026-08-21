@@ -32,6 +32,8 @@ Deno.serve(async (request) => {
       return json({ error: 'Supabase function environment is incomplete.' }, 500, origin);
     }
     if (!authorization) return json({ error: 'Missing authorization header.' }, 401, origin);
+    const accessToken = bearerAccessToken(authorization);
+    if (!accessToken) return json({ error: 'Invalid authorization header.' }, 401, origin);
 
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authorization } }
@@ -89,9 +91,8 @@ Deno.serve(async (request) => {
       }
     }
 
-    const mandatoryMfaRoles = new Set(['default_admin', 'ceo', 'director', 'it', 'support']);
-    if (currentProfile.role === 'admin' && !currentProfile.must_change_password && mandatoryMfaRoles.has(currentProfile.admin_role)) {
-      const { data: aalData, error: aalError } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (currentProfile.role === 'admin' && !currentProfile.must_change_password) {
+      const { data: aalData, error: aalError } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel(accessToken);
       if (aalError || aalData.currentLevel !== 'aal2') {
         return json({ error: 'Multi-factor authentication is required to change this administrative account.' }, 403, origin);
       }
@@ -152,6 +153,12 @@ Deno.serve(async (request) => {
     return json({ error: error instanceof Error ? error.message : 'Unexpected server error.' }, 500, origin);
   }
 });
+
+function bearerAccessToken(authorization: string): string | null {
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  const token = match?.[1]?.trim();
+  return token || null;
+}
 
 function allowedOrigin(request: Request): string | null {
   const requestOrigin = request.headers.get('Origin');
