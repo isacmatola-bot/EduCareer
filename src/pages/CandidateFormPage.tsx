@@ -3,6 +3,7 @@ import { Icon } from '../components/Icon';
 import type { CandidateFormState } from '../constants';
 import { programs } from '../data';
 import { localizeProgram, useI18n } from '../i18n';
+import { passwordPolicyMessage, passwordPolicyPattern } from '../security/passwordPolicy';
 
 type CandidateFormPageProps = {
   form: CandidateFormState;
@@ -44,11 +45,14 @@ export function CandidateFormPage({ form, setForm, onSubmit }: CandidateFormPage
               <input
                 required
                 minLength={8}
+                pattern={passwordPolicyPattern}
+                title={passwordPolicyMessage}
                 type="password"
                 autoComplete="new-password"
                 value={form.password}
                 onChange={(event) => setForm({ ...form, password: event.target.value })}
               />
+              <small className="form-hint">{passwordPolicyMessage}</small>
             </label>
           </div>
         </div>
