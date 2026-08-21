@@ -1,5 +1,6 @@
 import { assertAccountCanSignIn } from '../auth';
 import type { AccountRole, AdminRole, AuthSession, LoginForm, UserAccount } from '../auth';
+import { passwordMeetsPolicy, passwordPolicyMessage } from '../security/passwordPolicy';
 import type { CandidateApplication, Opportunity, PartnerRequest, Program } from '../types';
 import { requireSupabase } from './supabaseClient';
 
@@ -80,6 +81,14 @@ type SupabaseOpportunityRow = {
   deadline: string;
   status: string;
   requirements: string[];
+  created_by: string | null;
+};
+
+type RegistrationStatus = 'submitted' | 'reviewing' | 'approved' | 'rejected';
+
+type RegistrationWorkflow = {
+  id: string;
+  status: RegistrationStatus;
 };
 
 export type SupabaseSnapshot = {
@@ -93,12 +102,8 @@ export type SupabaseSnapshot = {
 
 export async function loadSupabaseSnapshot(): Promise<SupabaseSnapshot> {
   const client = requireSupabase();
-  const [programRows, opportunityRows] = await Promise.all([
-    selectRows<SupabaseProgramRow>('programs', '*'),
-    selectRows<SupabaseOpportunityRow>('opportunities', '*')
-  ]);
+  const programRows = await selectRows<SupabaseProgramRow>('programs', '*');
   const programs = programRows.map(programRowToProgram);
-  const opportunities = opportunityRows.map(opportunityRowToOpportunity);
   const { data: sessionData } = await client.auth.getSession();
   const sessionUser = sessionData.session?.user ?? null;
 
@@ -108,7 +113,7 @@ export async function loadSupabaseSnapshot(): Promise<SupabaseSnapshot> {
       candidates: [],
       partners: [],
       programs,
-      opportunities,
+      opportunities: [],
       session: null
     };
   }
@@ -121,11 +126,13 @@ export async function loadSupabaseSnapshot(): Promise<SupabaseSnapshot> {
       candidates: [],
       partners: [],
       programs,
-      opportunities,
+      opportunities: [],
       session: null
     };
   }
 
+  const opportunityRows = await selectRows<SupabaseOpportunityRow>('opportunities', '*');
+  const opportunities = opportunityRows.map(opportunityRowToOpportunity);
   const account = profileToAccount(sessionProfile);
   const session: AuthSession = { mode: 'account', accountId: sessionUser.id };
 
@@ -182,8 +189,15 @@ export async function updateSupabaseProgram(program: Program): Promise<Program> 
 
 export async function createSupabaseOpportunity(opportunity: Opportunity): Promise<Opportunity> {
   const client = requireSupabase();
+  const { data: userData, error: userError } = await client.auth.getUser();
+  if (userError || !userData.user) throw new Error('You must log in before publishing an opportunity.');
+
   const { id: _temporaryId, ...row } = opportunityToRow(opportunity);
-  const { data, error } = await client.from('opportunities').insert(row).select('*').single();
+  const { data, error } = await client
+    .from('opportunities')
+    .insert({ ...row, created_by: userData.user.id })
+    .select('*')
+    .single();
   if (error || !data) throw new Error(error?.message ?? 'Unable to create this opportunity.');
   return opportunityRowToOpportunity(data as SupabaseOpportunityRow);
 }
@@ -269,8 +283,8 @@ export async function registerSupabaseAccount(input: AccountRegistrationInput): 
     throw new Error('Username must contain at least 3 characters.');
   }
 
-  if (password.length < 8) {
-    throw new Error('Password must contain at least 8 characters.');
+  if (!passwordMeetsPolicy(password)) {
+    throw new Error(passwordPolicyMessage);
   }
 
   const { data: signUpData, error: signUpError } = await client.auth.signUp({
@@ -393,8 +407,29 @@ export async function createSupabaseAdminAccount(input: AccountRegistrationInput
 
 export async function updateSupabaseAccountProfile(accountId: string, patch: Partial<UserAccount>): Promise<void> {
   const client = requireSupabase();
+  const { data: target, error: targetError } = await client
+    .from('profiles')
+    .select('id, role, status')
+    .eq('id', accountId)
+    .single();
+
+  if (targetError || !target) throw new Error(targetError?.message ?? 'Account not found.');
+
+  const edgePatch = { ...patch };
+  if (patch.status && (target.role === 'graduate' || target.role === 'partner')) {
+    const handledByWorkflow = await routeRegistrationStatusChange(
+      accountId,
+      target.role,
+      target.status as UserAccount['status'],
+      patch.status
+    );
+    if (handledByWorkflow) delete edgePatch.status;
+  }
+
+  if (Object.keys(edgePatch).length === 0) return;
+
   const { data, error } = await client.functions.invoke('admin-manage-user', {
-    body: { action: 'update', accountId, patch }
+    body: { action: 'update', accountId, patch: edgePatch }
   });
   const payload = data as { error?: string } | null;
   if (error) throw new Error(await readFunctionError(error, 'Unable to update this account.'));
@@ -487,6 +522,108 @@ export async function deleteSupabaseAccountProfile(accountId: string): Promise<v
   const payload = data as { error?: string } | null;
   if (error) throw new Error(await readFunctionError(error, 'Unable to delete this account.'));
   if (payload?.error) throw new Error(payload.error);
+}
+
+async function routeRegistrationStatusChange(
+  accountId: string,
+  role: 'graduate' | 'partner',
+  currentProfileStatus: UserAccount['status'],
+  desiredProfileStatus: UserAccount['status']
+): Promise<boolean> {
+  if (desiredProfileStatus === currentProfileStatus || desiredProfileStatus === 'disabled') return false;
+
+  const workflow = await loadRegistrationWorkflow(accountId, role);
+  if (!workflow) throw new Error('This account is not linked to its registration workflow.');
+
+  if (desiredProfileStatus === 'pending') {
+    if (currentProfileStatus === 'pending') return false;
+    throw new Error('A final registration decision cannot be reverted to pending.');
+  }
+
+  if (desiredProfileStatus === 'active') {
+    if (currentProfileStatus === 'disabled') {
+      if (workflow.status !== 'approved') {
+        throw new Error('This account can only be recovered after its registration has been approved.');
+      }
+      return false;
+    }
+    if (workflow.status === 'rejected' || currentProfileStatus === 'rejected') {
+      throw new Error('A rejected registration cannot be activated from profile management.');
+    }
+    if (workflow.status === 'approved') return false;
+    await advanceRegistrationWorkflow(role, workflow, 'approved');
+    return true;
+  }
+
+  if (desiredProfileStatus === 'rejected') {
+    if (workflow.status === 'approved' || currentProfileStatus === 'active') {
+      throw new Error('An approved registration cannot be rejected from profile management.');
+    }
+    if (workflow.status === 'rejected') return false;
+    await advanceRegistrationWorkflow(role, workflow, 'rejected');
+    return true;
+  }
+
+  return false;
+}
+
+async function loadRegistrationWorkflow(
+  accountId: string,
+  role: 'graduate' | 'partner'
+): Promise<RegistrationWorkflow | null> {
+  const client = requireSupabase();
+  if (role === 'graduate') {
+    const { data, error } = await client
+      .from('candidates')
+      .select('id, registration_status')
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    return { id: data.id, status: data.registration_status as RegistrationStatus };
+  }
+
+  const { data, error } = await client
+    .from('partner_requests')
+    .select('id, status')
+    .eq('account_id', accountId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return { id: data.id, status: data.status as RegistrationStatus };
+}
+
+async function advanceRegistrationWorkflow(
+  role: 'graduate' | 'partner',
+  workflow: RegistrationWorkflow,
+  finalStatus: 'approved' | 'rejected'
+): Promise<void> {
+  if (workflow.status === finalStatus) return;
+  if (workflow.status === 'approved' || workflow.status === 'rejected') {
+    throw new Error('This registration already has a final decision.');
+  }
+
+  const client = requireSupabase();
+  const rpcName = role === 'graduate' ? 'review_graduate_registration' : 'review_partner_request';
+  const idParameter = role === 'graduate' ? 'p_candidate_id' : 'p_request_id';
+
+  if (workflow.status === 'submitted') {
+    const { error: reviewingError } = await client.rpc(rpcName, {
+      [idParameter]: workflow.id,
+      p_status: 'reviewing'
+    });
+    if (reviewingError) throw new Error(reviewingError.message);
+  }
+
+  const { error: finalError } = await client.rpc(rpcName, {
+    [idParameter]: workflow.id,
+    p_status: finalStatus
+  });
+  if (finalError) throw new Error(finalError.message);
 }
 
 async function readFunctionError(error: unknown, fallback: string): Promise<string> {
@@ -620,7 +757,17 @@ function opportunityRowToOpportunity(row: SupabaseOpportunityRow): Opportunity {
   const allowedTypes: Opportunity['type'][] = ['Assistant Teacher', 'Internship', 'Mentorship', 'Seminar', 'Practice Teaching'];
   const type = allowedTypes.find((item) => item === row.opportunity_type) ?? 'Internship';
   const status: Opportunity['status'] = row.status === 'closed' ? 'Closed' : row.status === 'upcoming' ? 'Upcoming' : 'Open';
-  return { id: row.id, title: row.title, institution: row.institution, location: row.location, type, deadline: row.deadline, status, requirements: row.requirements ?? [] };
+  return {
+    id: row.id,
+    title: row.title,
+    institution: row.institution,
+    location: row.location,
+    type,
+    deadline: row.deadline,
+    status,
+    requirements: row.requirements ?? [],
+    createdBy: row.created_by
+  };
 }
 
 function opportunityToRow(opportunity: Opportunity) {

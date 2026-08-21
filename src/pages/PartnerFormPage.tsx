@@ -2,7 +2,7 @@ import type { FormEvent } from 'react';
 import { Icon } from '../components/Icon';
 import type { PartnerFormState } from '../constants';
 import { useI18n } from '../i18n';
-import { passwordPolicyMessage, passwordPolicyPattern } from '../security/passwordPolicy';
+import { passwordPolicyMessage, passwordPolicyMinLength, passwordPolicyPattern } from '../security/passwordPolicy';
 
 type PartnerFormPageProps = {
   form: PartnerFormState;
@@ -31,12 +31,12 @@ export function PartnerFormPage({ form, setForm, onSubmit }: PartnerFormPageProp
       <form className="form-card" onSubmit={onSubmit}>
         <div className="credential-panel partner-credential-panel">
           <div className="credential-panel-heading">
-              <span><Icon name="partner" /></span>
-              <div>
+            <span><Icon name="partner" /></span>
+            <div>
               <h3>{t('form.credentialsTitle')}</h3>
               <p>{t('form.credentialsPartner')}</p>
-              </div>
             </div>
+          </div>
           <div className="form-grid">
             <label>
               {t('form.username')}
@@ -51,15 +51,16 @@ export function PartnerFormPage({ form, setForm, onSubmit }: PartnerFormPageProp
               {t('form.password')}
               <input
                 required
-                minLength={8}
+                minLength={passwordPolicyMinLength}
                 pattern={passwordPolicyPattern}
                 title={passwordPolicyMessage}
+                aria-describedby="partner-password-requirements"
                 type="password"
                 autoComplete="new-password"
                 value={form.password}
                 onChange={(event) => setForm({ ...form, password: event.target.value })}
               />
-              <small className="form-hint">{passwordPolicyMessage}</small>
+              <p id="partner-password-requirements" className="form-hint" role="note">{passwordPolicyMessage}</p>
             </label>
           </div>
         </div>

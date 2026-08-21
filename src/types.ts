@@ -28,6 +28,7 @@ export type Opportunity = {
   deadline: string;
   status: 'Open' | 'Upcoming' | 'Closed';
   requirements: string[];
+  createdBy?: string | null;
 };
 
 export type OpportunityApplication = {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { passwordMeetsPolicy, passwordPolicyMessage, passwordPolicyPattern } from '../security/passwordPolicy';
+import { passwordMeetsPolicy, passwordPolicyMessage, passwordPolicyMinLength, passwordPolicyPattern } from '../security/passwordPolicy';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import {
   completePasswordRecovery,
@@ -236,21 +236,22 @@ export function PasswordRecoveryBridge() {
                 {text.newPassword}
                 <input
                   required
-                  minLength={8}
+                  minLength={passwordPolicyMinLength}
                   pattern={passwordPolicyPattern}
                   title={passwordPolicyMessage}
+                  aria-describedby="recovery-password-requirements"
                   type="password"
                   autoComplete="new-password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                 />
-                <small className="form-hint">{passwordPolicyMessage}</small>
+                <p id="recovery-password-requirements" className="form-hint" role="note">{passwordPolicyMessage}</p>
               </label>
               <label>
                 {text.confirmPassword}
                 <input
                   required
-                  minLength={8}
+                  minLength={passwordPolicyMinLength}
                   pattern={passwordPolicyPattern}
                   title={passwordPolicyMessage}
                   type="password"

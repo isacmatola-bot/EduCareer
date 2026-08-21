@@ -6,6 +6,7 @@ const portal = readFileSync(new URL('./pages/PortalPage.tsx', import.meta.url), 
 
 describe('cross-admin realtime synchronization', () => {
   it('reloads operational queues when authorized workflow rows change', () => {
+    expect(dashboard).toContain("table: 'candidates'");
     expect(dashboard).toContain("table: 'opportunity_applications'");
     expect(dashboard).toContain("table: 'partner_requests'");
     expect(dashboard).toContain('() => void loadWorkflow()');

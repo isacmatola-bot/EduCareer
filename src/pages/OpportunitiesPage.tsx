@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { localizeOpportunity, localizeOpportunityType, localizeStatus, useI18n } from '../i18n';
+import { isSupabaseConfigured, requireSupabase } from '../services/supabaseClient';
 import type { Opportunity } from '../types';
 import { getOpportunityIcon } from '../utils/presentation';
 
@@ -16,6 +17,23 @@ type OpportunitiesPageProps = {
   onApplyOpportunity: (opportunity: Opportunity) => void;
 };
 
+type MemberAccess = 'checking' | 'active' | 'restricted';
+
+const accessCopy = {
+  en: {
+    checking: 'Checking account access…',
+    restricted: 'Opportunities are available only to active EduCareer accounts. Sign in with an active account or wait for your registration to be approved.'
+  },
+  pt: {
+    checking: 'A verificar o acesso da conta…',
+    restricted: 'As oportunidades estão disponíveis apenas para contas EduCareer activas. Entre com uma conta activa ou aguarde a aprovação da sua inscrição.'
+  },
+  jp: {
+    checking: 'アカウントのアクセス権を確認しています…',
+    restricted: '求人・機会情報は有効なEduCareerアカウントのみ閲覧できます。有効なアカウントでログインするか、登録の承認をお待ちください。'
+  }
+} as const;
+
 export function OpportunitiesPage({
   opportunities,
   canManage,
@@ -28,22 +46,76 @@ export function OpportunitiesPage({
   onApplyOpportunity
 }: OpportunitiesPageProps) {
   const { language, t } = useI18n();
+  const copy = accessCopy[language];
   const [editing, setEditing] = useState<Opportunity | null>(null);
   const [pendingOpportunityId, setPendingOpportunityId] = useState<string | null>(null);
   const [operationError, setOperationError] = useState('');
+  const [memberAccess, setMemberAccess] = useState<MemberAccess>(isSupabaseConfigured ? 'checking' : 'active');
+  const [partnerPublisherId, setPartnerPublisherId] = useState<string | null>(null);
+  const [partnerPublisherName, setPartnerPublisherName] = useState('');
   const locale = language === 'jp' ? 'ja-JP' : language === 'pt' ? 'pt-PT' : 'en-US';
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setMemberAccess('active');
+      return;
+    }
+
+    let cancelled = false;
+    const client = requireSupabase();
+
+    void client.auth.getUser().then(async ({ data, error }) => {
+      if (cancelled) return;
+      if (error || !data.user) {
+        setPartnerPublisherId(null);
+        setPartnerPublisherName('');
+        setMemberAccess('restricted');
+        return;
+      }
+
+      const { data: profile, error: profileError } = await client
+        .from('profiles')
+        .select('id, role, status, display_name')
+        .eq('id', data.user.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (profileError || !profile || profile.status !== 'active') {
+        setPartnerPublisherId(null);
+        setPartnerPublisherName('');
+        setMemberAccess('restricted');
+        return;
+      }
+
+      setMemberAccess('active');
+      if (profile.role === 'partner') {
+        setPartnerPublisherId(profile.id);
+        setPartnerPublisherName(profile.display_name ?? '');
+      } else {
+        setPartnerPublisherId(null);
+        setPartnerPublisherName('');
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const canCreate = memberAccess === 'active' && (canManage || Boolean(partnerPublisherId));
 
   function createOpportunity() {
     setOperationError('');
     setEditing({
       id: `opportunity-${Date.now()}`,
       title: '',
-      institution: '',
+      institution: partnerPublisherName,
       location: '',
       type: 'Internship',
       deadline: new Date().toISOString().slice(0, 10),
       status: 'Open',
-      requirements: []
+      requirements: [],
+      createdBy: partnerPublisherId
     });
   }
 
@@ -98,6 +170,32 @@ export function OpportunitiesPage({
     }
   }
 
+  if (memberAccess === 'checking') {
+    return (
+      <section className="section-stack">
+        <div className="section-heading">
+          <p className="eyebrow icon-eyebrow"><Icon name="opportunities" /> {t('opportunities.eyebrow')}</p>
+          <h2>{t('opportunities.title')}</h2>
+        </div>
+        <p className="content-card muted" role="status">{copy.checking}</p>
+      </section>
+    );
+  }
+
+  if (memberAccess === 'restricted') {
+    return (
+      <section className="section-stack">
+        <div className="section-heading">
+          <p className="eyebrow icon-eyebrow"><Icon name="opportunities" /> {t('opportunities.eyebrow')}</p>
+          <h2>{t('opportunities.title')}</h2>
+        </div>
+        <div className="content-card pending-access-panel" role="status">
+          <p>{copy.restricted}</p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="section-stack">
       <div className="section-heading split-heading">
@@ -105,14 +203,14 @@ export function OpportunitiesPage({
           <p className="eyebrow icon-eyebrow"><Icon name="opportunities" /> {t('opportunities.eyebrow')}</p>
           <h2>{t('opportunities.title')}</h2>
         </div>
-        {canManage && <button className="admin-icon-button create-icon-button" type="button" onClick={createOpportunity} disabled={isLoading} aria-label={t('opportunities.create')} title={t('opportunities.create')}><Icon name="add" /></button>}
+        {canCreate && <button className="admin-icon-button create-icon-button" type="button" onClick={createOpportunity} disabled={isLoading} aria-label={t('opportunities.create')} title={t('opportunities.create')}><Icon name="add" /></button>}
       </div>
 
       {isLoading && <p className="content-card muted" role="status">{t('opportunities.loading')}</p>}
       {loadError && <p className="content-card form-error" role="alert">{t('opportunities.loadError')}: {loadError}</p>}
       {operationError && <p className="content-card form-error" role="alert">{operationError}</p>}
 
-      {canManage && editing && (
+      {canCreate && editing && (
         <div className="content-card opportunity-editor">
           <h3>{t('opportunities.editorTitle')}</h3>
           <label>{t('opportunities.name')}<input required value={editing.title} onChange={(event) => setEditing({ ...editing, title: event.target.value })} /></label>
@@ -140,6 +238,8 @@ export function OpportunitiesPage({
         {opportunities.map((opportunity) => {
           const localizedOpportunity = localizeOpportunity(language, opportunity);
           const isPending = pendingOpportunityId === opportunity.id;
+          const partnerOwnsOpportunity = Boolean(partnerPublisherId && opportunity.createdBy === partnerPublisherId);
+          const canManageItem = canManage || partnerOwnsOpportunity;
 
           return (
             <article className="opportunity-card" key={opportunity.id}>
@@ -153,7 +253,7 @@ export function OpportunitiesPage({
               <div className="opportunity-meta">
                 <span>{localizeOpportunityType(language, opportunity.type)}</span>
                 <span>{t('opportunities.deadline')}: {new Date(opportunity.deadline).toLocaleDateString(locale)}</span>
-                {canManage ? (
+                {canManageItem ? (
                   <div className="opportunity-admin-actions">
                     <button className="secondary admin-icon-button" type="button" disabled={isPending} onClick={() => setEditing(opportunity)} aria-label={t('actions.edit')} title={t('actions.edit')}><Icon name="edit" /></button>
                     <button className="secondary admin-icon-button" type="button" disabled={isPending} onClick={() => void updateOpportunity({ ...opportunity, status: opportunity.status === 'Closed' ? 'Open' : 'Closed' })} aria-label={opportunity.status === 'Closed' ? t('opportunities.reopen') : t('opportunities.close')} title={opportunity.status === 'Closed' ? t('opportunities.reopen') : t('opportunities.close')}>

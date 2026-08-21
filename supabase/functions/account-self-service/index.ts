@@ -3,6 +3,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 const productionOrigin = 'https://edu-career-chi.vercel.app';
 const previewOriginPattern =
   /^https:\/\/edu-career-[a-z0-9-]+-2kgmcorp\.vercel\.app$/;
+const passwordPolicyMessage =
+  'Password must contain at least 12 characters, including at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character.';
 
 type UpdateRequest = {
   action?: 'update';
@@ -81,8 +83,8 @@ Deno.serve(async (request) => {
       profilePatch.phone = patch.phone?.trim() || null;
       metadata.phone = profilePatch.phone ?? '';
     }
-    if (patch.password !== undefined && patch.password.length < 8) {
-      return json({ error: 'Password must contain at least 8 characters.' }, 400, origin);
+    if (patch.password !== undefined && !passwordMeetsPolicy(patch.password)) {
+      return json({ error: passwordPolicyMessage }, 400, origin);
     }
     if (currentProfile.role === 'admin' && currentProfile.must_change_password) {
       const changesProfile = patch.displayName !== undefined || patch.phone !== undefined || patch.email !== undefined;
@@ -153,6 +155,16 @@ Deno.serve(async (request) => {
     return json({ error: error instanceof Error ? error.message : 'Unexpected server error.' }, 500, origin);
   }
 });
+
+function passwordMeetsPolicy(password: string): boolean {
+  return (
+    password.length >= 12 &&
+    /[a-z]/.test(password) &&
+    /[A-Z]/.test(password) &&
+    /[0-9]/.test(password) &&
+    /[^A-Za-z0-9]/.test(password)
+  );
+}
 
 function bearerAccessToken(authorization: string): string | null {
   const match = authorization.match(/^Bearer\s+(.+)$/i);

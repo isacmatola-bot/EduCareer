@@ -13,15 +13,17 @@ const stateMachineMigration = readFileSync(
 );
 
 describe('interactive admin dashboard workflows', () => {
-  it('renders only workflow-valid controls for applications and partner requests', () => {
+  it('renders only workflow-valid controls for applications and registration requests', () => {
     expect(dashboard).toContain('reviewOpportunityApplication');
     expect(dashboard).toContain('reviewPartnerRequest');
+    expect(dashboard).toContain('reviewGraduateRegistration');
     expect(dashboard).toContain("item.status === 'submitted'");
     expect(dashboard).toContain("item.status === 'reviewing'");
     expect(dashboard).toContain("onChangeStatus(item.id, 'reviewing')");
     expect(dashboard).toContain("onChangeStatus(item.id, 'accepted')");
-    expect(dashboard).toContain("onChangeStatus(item.id, 'approved')");
-    expect(dashboard).toContain("onChangeStatus(item.id, 'rejected')");
+    expect(dashboard).toContain("onChangeStatus(itemId, 'reviewing')");
+    expect(dashboard).toContain("onChangeStatus(itemId, 'approved')");
+    expect(dashboard).toContain("onChangeStatus(itemId, 'rejected')");
     expect(dashboard).toContain('copy.terminal');
   });
 

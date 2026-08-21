@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { UserAccount } from '../auth';
 import { Icon } from '../components/Icon';
 import { formatRole, useI18n } from '../i18n';
-import { passwordMeetsPolicy, passwordPolicyMessage, passwordPolicyPattern } from '../security/passwordPolicy';
+import { passwordMeetsPolicy, passwordPolicyMessage, passwordPolicyMinLength, passwordPolicyPattern } from '../security/passwordPolicy';
 import type { SelfServiceAccountPatch } from '../services/supabaseStore';
 
 type AccountPageProps = {
@@ -106,21 +106,22 @@ export function AccountPage({ account, saving, securityOnly = false, onSave }: A
           <input
             type="password"
             required={securityOnly}
-            minLength={8}
+            minLength={passwordPolicyMinLength}
             pattern={passwordPolicyPattern}
             title={passwordPolicyMessage}
+            aria-describedby="account-password-requirements"
             autoComplete="new-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
-          <small className="form-hint">{passwordPolicyMessage}</small>
+          <p id="account-password-requirements" className="form-hint" role="note">{passwordPolicyMessage}</p>
         </label>
         <label>
           {t('account.confirmPassword')}
           <input
             type="password"
             required={securityOnly}
-            minLength={8}
+            minLength={passwordPolicyMinLength}
             pattern={passwordPolicyPattern}
             title={passwordPolicyMessage}
             autoComplete="new-password"
