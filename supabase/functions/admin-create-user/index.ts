@@ -46,6 +46,10 @@ Deno.serve(async (request) => {
     if (!authorization) {
       return json({ error: 'Missing authorization header.' }, 401, origin);
     }
+    const accessToken = bearerAccessToken(authorization);
+    if (!accessToken) {
+      return json({ error: 'Invalid authorization header.' }, 401, origin);
+    }
 
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authorization } }
@@ -62,7 +66,7 @@ Deno.serve(async (request) => {
     if (userError || !userData.user) {
       return json({ error: 'Unauthorized request.' }, 401, origin);
     }
-    const { data: aalData, error: aalError } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+    const { data: aalData, error: aalError } = await userClient.auth.mfa.getAuthenticatorAssuranceLevel(accessToken);
     if (aalError || aalData.currentLevel !== 'aal2') {
       return json({ error: 'Multi-factor authentication is required for this operation.' }, 403, origin);
     }
@@ -163,6 +167,12 @@ Deno.serve(async (request) => {
     return json({ error: describeError(error, 'Unexpected server error.') }, 500, origin);
   }
 });
+
+function bearerAccessToken(authorization: string): string | null {
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  const token = match?.[1]?.trim();
+  return token || null;
+}
 
 function canCreateAdminRole(actorRole: string, targetRole: string): boolean {
   if (targetRole === 'default_admin' || !allowedAdminRoles.has(targetRole)) return false;
