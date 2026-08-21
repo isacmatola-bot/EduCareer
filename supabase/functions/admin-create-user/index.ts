@@ -13,7 +13,13 @@ type AdminDraft = {
   adminRole?: string;
 };
 
+const departmentAdminRoles = new Set([
+  'it', 'rh', 'finance', 'programs', 'opportunities', 'partnerships', 'support', 'statistics'
+]);
 const adminCreatorRoles = new Set(['default_admin', 'ceo', 'director']);
+const allowedAdminRoles = new Set([
+  'ceo', 'director', ...departmentAdminRoles
+]);
 
 Deno.serve(async (request) => {
   const origin = allowedOrigin(request);
@@ -74,7 +80,7 @@ Deno.serve(async (request) => {
       callerProfile?.status !== 'active' ||
       callerProfile?.must_change_password
     ) {
-      return json({ error: 'Only executive administrators can create administrative accounts.' }, 403, origin);
+      return json({ error: 'Only authorized executive administrators can create administrative accounts.' }, 403, origin);
     }
 
     const draft = await request.json() as AdminDraft;
@@ -83,11 +89,16 @@ Deno.serve(async (request) => {
       return json({ error: validationError }, 400, origin);
     }
 
+    const actorRole = callerProfile.admin_role!;
+    const requestedRole = draft.adminRole!;
+    if (!canCreateAdminRole(actorRole, requestedRole)) {
+      return json({ error: 'You cannot create an administrator at this hierarchy level.' }, 403, origin);
+    }
+
     const username = draft.username!.trim().toLowerCase();
     const email = draft.email!.trim().toLowerCase();
     const displayName = draft.displayName!.trim();
     const phone = draft.phone?.trim() || null;
-    const adminRole = draft.adminRole!;
 
     const { data: createdUser, error: createError } =
       await serviceClient.auth.admin.createUser({
@@ -99,7 +110,7 @@ Deno.serve(async (request) => {
           display_name: displayName,
           phone: phone ?? '',
           role: 'admin',
-          admin_role: adminRole
+          admin_role: requestedRole
         }
       });
 
@@ -116,7 +127,7 @@ Deno.serve(async (request) => {
       display_name: displayName,
       phone,
       role: 'admin',
-      admin_role: adminRole,
+      admin_role: requestedRole,
       status: 'active',
       must_change_password: true
     };
@@ -133,10 +144,7 @@ Deno.serve(async (request) => {
       const { error: rollbackError } =
         await serviceClient.auth.admin.deleteUser(createdUser.user.id);
       if (rollbackError) {
-        console.error(
-          'admin-create-user: Auth rollback failed',
-          errorDetails(rollbackError)
-        );
+        console.error('admin-create-user: Auth rollback failed', errorDetails(rollbackError));
       }
       return json({ error: message }, 400, origin);
     }
@@ -145,7 +153,7 @@ Deno.serve(async (request) => {
       actor_id: userData.user.id,
       target_id: createdUser.user.id,
       action: 'admin_account.created',
-      details: { admin_role: adminRole }
+      details: { admin_role: requestedRole, actor_admin_role: actorRole }
     });
     if (auditError) console.error('admin-create-user: audit insert failed', errorDetails(auditError));
 
@@ -156,6 +164,14 @@ Deno.serve(async (request) => {
   }
 });
 
+function canCreateAdminRole(actorRole: string, targetRole: string): boolean {
+  if (targetRole === 'default_admin' || !allowedAdminRoles.has(targetRole)) return false;
+  if (actorRole === 'default_admin') return true;
+  if (actorRole === 'ceo') return targetRole === 'director' || departmentAdminRoles.has(targetRole);
+  if (actorRole === 'director') return departmentAdminRoles.has(targetRole);
+  return false;
+}
+
 function allowedOrigin(request: Request): string | null {
   const requestOrigin = request.headers.get('Origin');
   if (!requestOrigin) return productionOrigin;
@@ -165,8 +181,7 @@ function allowedOrigin(request: Request): string | null {
     .map((value) => value.trim())
     .filter(Boolean);
 
-  return configuredOrigins.includes(requestOrigin) ||
-    previewOriginPattern.test(requestOrigin)
+  return configuredOrigins.includes(requestOrigin) || previewOriginPattern.test(requestOrigin)
     ? requestOrigin
     : null;
 }
@@ -183,55 +198,32 @@ function corsHeaders(origin: string) {
 function errorStatus(error: unknown, fallback: number) {
   if (!error || typeof error !== 'object') return fallback;
   const status = (error as Record<string, unknown>).status;
-  return typeof status === 'number' && status >= 400 && status <= 599
-    ? status
-    : fallback;
+  return typeof status === 'number' && status >= 400 && status <= 599 ? status : fallback;
 }
 
 function validateDraft(draft: AdminDraft): string | null {
   if (!draft.username || draft.username.trim().length < 3) {
     return 'Username must contain at least 3 characters.';
   }
-
   if (!draft.password || draft.password.length < 8) {
     return 'Password must contain at least 8 characters.';
   }
-
   if (!draft.email || !draft.email.includes('@')) {
     return 'A valid email address is required.';
   }
-
   if (!draft.displayName || draft.displayName.trim().length < 2) {
     return 'Display name is required.';
   }
-
-  const allowedAdminRoles = new Set([
-    'ceo',
-    'director',
-    'it',
-    'rh',
-    'finance',
-    'programs',
-    'opportunities',
-    'partnerships',
-    'support',
-    'statistics'
-  ]);
-
   if (!draft.adminRole || !allowedAdminRoles.has(draft.adminRole)) {
     return 'Invalid admin hierarchy.';
   }
-
   return null;
 }
 
 function json(payload: unknown, status: number, origin: string) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: {
-      ...corsHeaders(origin),
-      'Content-Type': 'application/json'
-    }
+    headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' }
   });
 }
 
