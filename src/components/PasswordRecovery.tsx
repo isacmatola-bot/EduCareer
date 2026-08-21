@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { isSupabaseConfigured } from '../services/supabaseClient';
 import {
   completePasswordRecovery,
   requestPasswordRecovery,
@@ -127,6 +128,8 @@ export function ForgotPasswordControl() {
     setError('');
   }
 
+  if (!isSupabaseConfigured) return null;
+
   return (
     <>
       <button className="secondary" type="button" onClick={() => setOpen(true)}>
@@ -173,14 +176,17 @@ export function ForgotPasswordControl() {
 
 export function PasswordRecoveryBridge() {
   const text = useMemo(currentCopy, []);
-  const [open, setOpen] = useState(() => window.location.hash.includes('type=recovery'));
+  const [open, setOpen] = useState(() => isSupabaseConfigured && window.location.hash.includes('type=recovery'));
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => subscribeToPasswordRecovery(() => setOpen(true)), []);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    return subscribeToPasswordRecovery(() => setOpen(true));
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -202,7 +208,7 @@ export function PasswordRecoveryBridge() {
     }
   }
 
-  if (!open) return null;
+  if (!isSupabaseConfigured || !open) return null;
 
   return createPortal(
     <div className="welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="password-recovery-title">
