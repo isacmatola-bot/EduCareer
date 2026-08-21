@@ -26,6 +26,7 @@ type DashboardCopy = {
   loadError: string;
   refresh: string;
   readOnly: string;
+  terminal: string;
   submitted: string;
   reviewing: string;
   accepted: string;
@@ -49,6 +50,7 @@ const dashboardCopy: Record<'en' | 'pt' | 'jp', DashboardCopy> = {
     loadError: 'Unable to load operational dashboard data.',
     refresh: 'Refresh',
     readOnly: 'Read-only for your administrative role.',
+    terminal: 'Final decision recorded. No further status changes are available.',
     submitted: 'Submitted',
     reviewing: 'Reviewing',
     accepted: 'Accepted',
@@ -70,6 +72,7 @@ const dashboardCopy: Record<'en' | 'pt' | 'jp', DashboardCopy> = {
     loadError: 'Não foi possível carregar os dados operacionais do dashboard.',
     refresh: 'Actualizar',
     readOnly: 'Acesso apenas de leitura para a sua função administrativa.',
+    terminal: 'Decisão final registada. Não estão disponíveis novas alterações de estado.',
     submitted: 'Submetida',
     reviewing: 'Em análise',
     accepted: 'Aceite',
@@ -91,6 +94,7 @@ const dashboardCopy: Record<'en' | 'pt' | 'jp', DashboardCopy> = {
     loadError: '管理ダッシュボードの運用データを読み込めませんでした。',
     refresh: '更新',
     readOnly: '現在の管理権限では閲覧のみ可能です。',
+    terminal: '最終決定が記録されています。これ以上のステータス変更はできません。',
     submitted: '提出済み',
     reviewing: '審査中',
     accepted: '承認済み',
@@ -313,25 +317,32 @@ function OperationalApplicationList({
             <p><strong>{copy.applicant}:</strong> {item.applicantUsername || '—'} · {item.applicantEmail || '—'}</p>
             <small>{new Date(item.createdAt).toLocaleString()}</small>
             {canManage ? (
-              <div className="action-row">
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={busyId === item.id || item.status === 'reviewing'}
-                  onClick={() => void onChangeStatus(item.id, 'reviewing')}
-                >{copy.markReviewing}</button>
-                <button
-                  type="button"
-                  disabled={busyId === item.id || item.status === 'accepted'}
-                  onClick={() => void onChangeStatus(item.id, 'accepted')}
-                >{copy.accept}</button>
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={busyId === item.id || item.status === 'rejected'}
-                  onClick={() => void onChangeStatus(item.id, 'rejected')}
-                >{copy.reject}</button>
-              </div>
+              item.status === 'submitted' ? (
+                <div className="action-row">
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => void onChangeStatus(item.id, 'reviewing')}
+                  >{copy.markReviewing}</button>
+                </div>
+              ) : item.status === 'reviewing' ? (
+                <div className="action-row">
+                  <button
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => void onChangeStatus(item.id, 'accepted')}
+                  >{copy.accept}</button>
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => void onChangeStatus(item.id, 'rejected')}
+                  >{copy.reject}</button>
+                </div>
+              ) : (
+                <p className="muted">{copy.terminal}</p>
+              )
             ) : (
               <p className="muted">{copy.readOnly}</p>
             )}
@@ -379,25 +390,32 @@ function OperationalPartnerList({
             <p>{item.supportNeeded}</p>
             <small>{copy.requestedBy}: {item.username || '—'} · {item.email} · {item.phone}</small>
             {canManage ? (
-              <div className="action-row">
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={busyId === item.id || item.status === 'reviewing'}
-                  onClick={() => void onChangeStatus(item.id, 'reviewing')}
-                >{copy.markReviewing}</button>
-                <button
-                  type="button"
-                  disabled={busyId === item.id || item.status === 'approved'}
-                  onClick={() => void onChangeStatus(item.id, 'approved')}
-                >{copy.approve}</button>
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={busyId === item.id || item.status === 'rejected'}
-                  onClick={() => void onChangeStatus(item.id, 'rejected')}
-                >{copy.reject}</button>
-              </div>
+              item.status === 'submitted' ? (
+                <div className="action-row">
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => void onChangeStatus(item.id, 'reviewing')}
+                  >{copy.markReviewing}</button>
+                </div>
+              ) : item.status === 'reviewing' ? (
+                <div className="action-row">
+                  <button
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => void onChangeStatus(item.id, 'approved')}
+                  >{copy.approve}</button>
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => void onChangeStatus(item.id, 'rejected')}
+                  >{copy.reject}</button>
+                </div>
+              ) : (
+                <p className="muted">{copy.terminal}</p>
+              )
             ) : (
               <p className="muted">{copy.readOnly}</p>
             )}
