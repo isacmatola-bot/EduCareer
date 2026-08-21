@@ -73,18 +73,21 @@ export async function completePasswordRecovery(password: string): Promise<void> 
         .maybeSingle()
     : { data: null };
 
+  let adminFirstLoginCompletionFailed = false;
+
   if (profile?.role === 'admin' && profile.must_change_password) {
     const { data: functionData, error: functionError } = await client.functions.invoke('account-self-service', {
       body: { action: 'update', patch: { password } }
     });
     const payload = functionData as { error?: string } | null;
-
-    if (functionError || payload?.error) {
-      throw new Error('The password was changed, but the administrative first-login reset could not be completed. Contact EduCareer support.');
-    }
+    adminFirstLoginCompletionFailed = Boolean(functionError || payload?.error);
   }
 
-  // A recovery session is temporary. End it after the password change so the
-  // user must authenticate normally again (and complete MFA when required).
+  // A recovery session is temporary. Always end it after the password change
+  // so the user must authenticate normally again (and complete MFA when required).
   await client.auth.signOut();
+
+  if (adminFirstLoginCompletionFailed) {
+    throw new Error('The password was changed, but the administrative first-login reset could not be completed. Contact EduCareer support.');
+  }
 }
