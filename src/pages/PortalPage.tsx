@@ -5,6 +5,7 @@ import {
   adminRoleLabels,
   canAssignAdminRole,
   canCreateAdminAccount,
+  canCreateAdminRole,
   canDeleteAccount,
   canManageAccount,
   hasAdminPermission
@@ -58,8 +59,6 @@ const blankAdminDraft: AdminAccountDraft = {
   phone: '',
   adminRole: 'director'
 };
-
-const adminRoleOptions = (Object.keys(adminRoleLabels) as AdminRole[]).filter((role) => role !== 'default_admin');
 
 export function PortalPage({
   account,
@@ -115,13 +114,19 @@ export function PortalPage({
   const canManageAccounts = hasAdminPermission(account, 'accounts.maintain');
   const canCreateAdmins = canCreateAdminAccount(account);
   const canGovernAdmins = canAssignAdminRole(account);
+  const adminRoleOptions = (Object.keys(adminRoleLabels) as AdminRole[])
+    .filter((role) => canCreateAdminRole(account, role));
+  const selectedCreateAdminRole = adminRoleOptions.includes(adminDraft.adminRole)
+    ? adminDraft.adminRole
+    : adminRoleOptions[0];
   const hasFullAccess = isAdmin || account.status === 'active';
   const roleLabel = isAdmin && account.adminRole ? formatAdminRole(account.adminRole, t) : formatRole(account.role, t);
   const statusLabel = t(`portal.status.${account.status}`);
 
   function submitNewAdmin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onCreateAdminAccount(adminDraft);
+    if (!selectedCreateAdminRole) return;
+    onCreateAdminAccount({ ...adminDraft, adminRole: selectedCreateAdminRole });
     setAdminDraft(blankAdminDraft);
     setShowCreateAdmin(false);
     setShowAccounts(true);
@@ -296,7 +301,7 @@ export function PortalPage({
                 <label>
                   {t('portal.adminHierarchy')}
                   <select
-                    value={adminDraft.adminRole}
+                    value={selectedCreateAdminRole}
                     onChange={(event) => setAdminDraft({ ...adminDraft, adminRole: event.target.value as AdminRole })}
                   >
                     {adminRoleOptions.map((role) => (
@@ -448,7 +453,7 @@ export function PortalPage({
                               value={editDraft.adminRole}
                               onChange={(event) => setEditDraft({ ...editDraft, adminRole: event.target.value as AdminRole })}
                             >
-                              {(isDefaultAdminTarget ? ['default_admin'] as AdminRole[] : adminRoleOptions).map((role) => (
+                              {adminRoleOptions.map((role) => (
                                 <option key={role} value={role}>{formatAdminRole(role, t)}</option>
                               ))}
                             </select>
