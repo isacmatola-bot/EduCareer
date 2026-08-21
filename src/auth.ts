@@ -18,17 +18,27 @@ export type AdminRole =
   | 'statistics';
 
 export type AdminPermission =
+  | 'accounts.read_all'
+  | 'accounts.read_users'
   | 'accounts.maintain'
   | 'accounts.govern'
   | 'accounts.create_admin'
   | 'accounts.delete'
+  | 'candidates.read'
   | 'candidates.manage'
+  | 'partner_requests.read'
   | 'partner_requests.manage'
+  | 'programs.read'
   | 'programs.manage'
+  | 'opportunities.read'
   | 'opportunities.manage'
+  | 'applications.read'
   | 'applications.manage'
+  | 'placements.read'
   | 'placements.manage'
-  | 'audit.read';
+  | 'audit.read'
+  | 'finance.read'
+  | 'statistics.read_aggregate';
 
 export type AuthSession =
   | { mode: 'visitor' }
@@ -91,32 +101,68 @@ export const roleLabels: Record<ViewerRole, string> = {
   admin: 'Admin Account'
 };
 
+export const departmentAdminRoles: readonly AdminRole[] = [
+  'it', 'rh', 'finance', 'programs', 'opportunities', 'partnerships', 'support', 'statistics'
+];
+
+export const adminHierarchyLevel: Record<AdminRole, number> = {
+  default_admin: 0,
+  ceo: 1,
+  director: 2,
+  it: 3,
+  rh: 3,
+  finance: 3,
+  programs: 3,
+  opportunities: 3,
+  partnerships: 3,
+  support: 3,
+  statistics: 3
+};
+
 const leadershipPermissions: AdminPermission[] = [
+  'accounts.read_all',
+  'accounts.read_users',
   'accounts.maintain',
   'accounts.govern',
   'accounts.create_admin',
   'accounts.delete',
+  'candidates.read',
   'candidates.manage',
+  'partner_requests.read',
   'partner_requests.manage',
+  'programs.read',
   'programs.manage',
+  'opportunities.read',
   'opportunities.manage',
+  'applications.read',
   'applications.manage',
+  'placements.read',
   'placements.manage',
-  'audit.read'
+  'audit.read',
+  'finance.read',
+  'statistics.read_aggregate'
 ];
 
 export const adminPermissions: Record<AdminRole, readonly AdminPermission[]> = {
   default_admin: leadershipPermissions,
   ceo: leadershipPermissions,
   director: leadershipPermissions,
-  it: ['accounts.maintain'],
-  support: ['accounts.maintain'],
-  rh: ['candidates.manage', 'applications.manage', 'placements.manage'],
-  finance: [],
-  programs: ['programs.manage'],
-  opportunities: ['opportunities.manage', 'applications.manage', 'placements.manage'],
-  partnerships: ['partner_requests.manage'],
-  statistics: []
+  it: ['accounts.read_users', 'accounts.maintain'],
+  support: ['accounts.read_users', 'accounts.maintain'],
+  rh: [
+    'candidates.read', 'candidates.manage',
+    'applications.read', 'applications.manage',
+    'placements.read', 'placements.manage'
+  ],
+  finance: ['finance.read'],
+  programs: ['programs.read', 'programs.manage'],
+  opportunities: [
+    'opportunities.read', 'opportunities.manage',
+    'applications.read', 'applications.manage',
+    'placements.read', 'placements.manage'
+  ],
+  partnerships: ['partner_requests.read', 'partner_requests.manage'],
+  statistics: ['statistics.read_aggregate']
 };
 
 export function adminRoleRequiresMfa(account: UserAccount | null | undefined): boolean {
@@ -140,12 +186,38 @@ export function canManageOperations(account: UserAccount | null | undefined): bo
   return hasAdminPermission(account, 'accounts.maintain');
 }
 
+function isDepartmentRole(role: AdminRole): boolean {
+  return departmentAdminRoles.includes(role);
+}
+
+export function canManageAdminRole(actorRole: AdminRole, targetRole: AdminRole): boolean {
+  if (targetRole === 'default_admin' || actorRole === targetRole) return false;
+  if (actorRole === 'default_admin') return true;
+  if (actorRole === 'ceo') return targetRole === 'director' || isDepartmentRole(targetRole);
+  if (actorRole === 'director') return isDepartmentRole(targetRole);
+  return false;
+}
+
+export function canCreateAdminRole(
+  actor: UserAccount | null | undefined,
+  targetRole: AdminRole
+): boolean {
+  if (!canCreateAdminAccount(actor) || !actor?.adminRole || targetRole === 'default_admin') return false;
+  if (actor.adminRole === 'default_admin') return true;
+  if (actor.adminRole === 'ceo') return targetRole === 'director' || isDepartmentRole(targetRole);
+  if (actor.adminRole === 'director') return isDepartmentRole(targetRole);
+  return false;
+}
+
 export function canManageAccount(
   actor: UserAccount | null | undefined,
   target: UserAccount | null | undefined
 ): boolean {
   if (!hasAdminPermission(actor, 'accounts.maintain') || !target) return false;
-  return target.adminRole !== 'default_admin';
+  if (target.role !== 'admin') return true;
+  if (!actor?.adminRole || !target.adminRole || target.id === actor.id) return false;
+  if (!hasAdminPermission(actor, 'accounts.govern')) return false;
+  return canManageAdminRole(actor.adminRole, target.adminRole);
 }
 
 export function canAssignAdminRole(account: UserAccount | null | undefined): boolean {
@@ -160,12 +232,10 @@ export function canDeleteAccount(
   actor: UserAccount | null | undefined,
   target: UserAccount | null | undefined
 ): boolean {
-  return Boolean(
-    hasAdminPermission(actor, 'accounts.delete') &&
-    target &&
-    target.id !== actor?.id &&
-    target.adminRole !== 'default_admin'
-  );
+  if (!hasAdminPermission(actor, 'accounts.delete') || !target || target.id === actor?.id) return false;
+  if (target.role !== 'admin') return true;
+  if (!actor?.adminRole || !target.adminRole) return false;
+  return canManageAdminRole(actor.adminRole, target.adminRole);
 }
 
 export function seedDefaultAdmin(accounts: UserAccount[]): UserAccount[] {
@@ -180,6 +250,10 @@ export function seedDefaultAdmin(accounts: UserAccount[]): UserAccount[] {
   const hasDefaultAdmin = accounts.some((account) => account.id === 'admin-default');
 
   if (hasDefaultAdmin) {
+    return accounts;
+  }
+
+  if (!localDemoAdminCredentials.username || !localDemoAdminCredentials.password) {
     return accounts;
   }
 
