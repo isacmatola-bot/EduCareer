@@ -12,6 +12,7 @@ import {
 } from '../auth';
 import { Icon } from '../components/Icon';
 import { formatAdminRole, formatRole, useI18n } from '../i18n';
+import { passwordPolicyMessage, passwordPolicyMinLength, passwordPolicyPattern } from '../security/passwordPolicy';
 import { isSupabaseConfigured, requireSupabase } from '../services/supabaseClient';
 import { loadSupabaseSnapshot } from '../services/supabaseStore';
 import type { TabId } from '../types';
@@ -244,10 +245,16 @@ export function PortalPage({
           {hasFullAccess && account.role === 'partner' && (
             <>
               <p className="muted">{t('portal.partnerBody')}</p>
-              <button type="button" onClick={() => onNavigate('partners')}>
-                <Icon name="partner" />
-                {t('portal.updatePartner')}
-              </button>
+              <div className="portal-action-row">
+                <button type="button" onClick={() => onNavigate('opportunities')}>
+                  <Icon name="opportunities" />
+                  {t('opportunities.create')}
+                </button>
+                <button className="secondary" type="button" onClick={() => onNavigate('partners')}>
+                  <Icon name="partner" />
+                  {t('portal.updatePartner')}
+                </button>
+              </div>
             </>
           )}
           {isAdmin && (
@@ -357,12 +364,16 @@ export function PortalPage({
                   {t('portal.temporaryPassword')}
                   <input
                     required
-                    minLength={8}
+                    minLength={passwordPolicyMinLength}
+                    pattern={passwordPolicyPattern}
+                    title={passwordPolicyMessage}
+                    aria-describedby="admin-password-requirements"
                     type="password"
                     autoComplete="new-password"
                     value={adminDraft.password}
                     onChange={(event) => setAdminDraft({ ...adminDraft, password: event.target.value })}
                   />
+                  <p id="admin-password-requirements" className="form-hint" role="note">{passwordPolicyMessage}</p>
                 </label>
               </div>
               <div className="account-row-actions">
@@ -386,6 +397,17 @@ export function PortalPage({
                 const targetRoleLabel = target.role === 'admin' && target.adminRole
                   ? formatAdminRole(target.adminRole, t)
                   : formatRole(target.role, t);
+                const registrationTarget = target.role === 'graduate' || target.role === 'partner';
+                const canDecideRegistration = target.role === 'graduate'
+                  ? hasAdminPermission(account, 'candidates.manage')
+                  : target.role === 'partner'
+                    ? hasAdminPermission(account, 'partner_requests.manage')
+                    : true;
+                const approveOrRecoverDisabled =
+                  target.status === 'active' ||
+                  !canManageAccount(account, target) ||
+                  (registrationTarget && target.status === 'pending' && !canDecideRegistration) ||
+                  (registrationTarget && target.status === 'rejected');
 
                 return (
                   <article className="account-list-item" key={target.id}>
@@ -410,7 +432,7 @@ export function PortalPage({
                       <button
                         className="secondary"
                         type="button"
-                        disabled={target.status === 'active' || !canManageAccount(account, target)}
+                        disabled={approveOrRecoverDisabled}
                         onClick={() => onRecoverAccount(target.id)}
                       >
                         {target.status === 'pending' ? t('actions.approve') : t('actions.recover')}
@@ -418,7 +440,11 @@ export function PortalPage({
                       <button
                         className="secondary danger-button"
                         type="button"
-                        disabled={target.status !== 'pending' || !canManageAccount(account, target)}
+                        disabled={
+                          target.status !== 'pending' ||
+                          !canManageAccount(account, target) ||
+                          (registrationTarget && !canDecideRegistration)
+                        }
                         onClick={() => onUpdateAccount(target.id, {
                           displayName: target.displayName,
                           email: target.email,
@@ -481,6 +507,7 @@ export function PortalPage({
                             {t('portal.status')}
                             <select
                               value={editDraft.status}
+                              disabled={registrationTarget && !canDecideRegistration}
                               onChange={(event) => setEditDraft({ ...editDraft, status: event.target.value as UserAccount['status'] })}
                             >
                               <option value="active">{t('portal.status.active')}</option>
