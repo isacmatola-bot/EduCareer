@@ -7,15 +7,22 @@ const migration = readFileSync(
   new URL('../supabase/migrations/20260821062000_add_dashboard_review_workflows.sql', import.meta.url),
   'utf8'
 );
+const stateMachineMigration = readFileSync(
+  new URL('../supabase/migrations/20260821065000_enforce_review_state_transitions.sql', import.meta.url),
+  'utf8'
+);
 
 describe('interactive admin dashboard workflows', () => {
-  it('renders operational controls for applications and partner requests', () => {
+  it('renders only workflow-valid controls for applications and partner requests', () => {
     expect(dashboard).toContain('reviewOpportunityApplication');
     expect(dashboard).toContain('reviewPartnerRequest');
+    expect(dashboard).toContain("item.status === 'submitted'");
+    expect(dashboard).toContain("item.status === 'reviewing'");
     expect(dashboard).toContain("onChangeStatus(item.id, 'reviewing')");
     expect(dashboard).toContain("onChangeStatus(item.id, 'accepted')");
     expect(dashboard).toContain("onChangeStatus(item.id, 'approved')");
     expect(dashboard).toContain("onChangeStatus(item.id, 'rejected')");
+    expect(dashboard).toContain('copy.terminal');
   });
 
   it('uses the production application and partner review RPCs', () => {
@@ -32,5 +39,14 @@ describe('interactive admin dashboard workflows', () => {
     expect(migration).toContain("'partner_request.status_changed'");
     expect(migration).toContain("grant execute on function public.review_opportunity_application(uuid, text) to authenticated");
     expect(migration).toContain("grant execute on function public.review_partner_request(uuid, text) to authenticated");
+  });
+
+  it('makes accepted/rejected/approved decisions terminal and requires review first', () => {
+    expect(stateMachineMigration).toContain("v_application.status = 'submitted' and p_status <> 'reviewing'");
+    expect(stateMachineMigration).toContain("v_application.status = 'reviewing' and p_status not in ('accepted', 'rejected')");
+    expect(stateMachineMigration).toContain("v_application.status in ('accepted', 'rejected', 'withdrawn')");
+    expect(stateMachineMigration).toContain("v_request.status = 'submitted' and p_status <> 'reviewing'");
+    expect(stateMachineMigration).toContain("v_request.status = 'reviewing' and p_status not in ('approved', 'rejected')");
+    expect(stateMachineMigration).toContain("v_request.status in ('approved', 'rejected')");
   });
 });
