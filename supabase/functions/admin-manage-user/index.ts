@@ -9,9 +9,11 @@ const previewOriginPattern =
 
 const accountManagerRoles = new Set(['default_admin', 'ceo', 'director', 'it', 'support']);
 const governanceRoles = new Set(['default_admin', 'ceo', 'director']);
+const departmentAdminRoles = new Set([
+  'it', 'rh', 'finance', 'programs', 'opportunities', 'partnerships', 'support', 'statistics'
+]);
 const adminRoles = new Set([
-  'default_admin', 'ceo', 'director', 'it', 'rh', 'finance', 'programs',
-  'opportunities', 'partnerships', 'support', 'statistics'
+  'default_admin', 'ceo', 'director', ...departmentAdminRoles
 ]);
 
 type ManageRequest = {
@@ -24,6 +26,14 @@ type ManageRequest = {
     status?: 'active' | 'pending' | 'rejected' | 'disabled';
     adminRole?: string | null;
   };
+};
+
+type Profile = Record<string, string | boolean | null> & {
+  id: string;
+  role: string;
+  admin_role: string | null;
+  status: string;
+  must_change_password: boolean;
 };
 
 Deno.serve(async (request) => {
@@ -66,29 +76,39 @@ Deno.serve(async (request) => {
       serviceClient.from('profiles').select('*').eq('id', body.accountId).single()
     ]);
 
-    if (!caller || caller.role !== 'admin' || caller.status !== 'active' || caller.must_change_password || !accountManagerRoles.has(caller.admin_role)) {
+    if (!isUsableAccountManager(caller as Profile | null)) {
       return json({ error: 'You do not have permission to manage accounts.' }, 403, origin);
     }
     if (!target) return json({ error: 'Account not found.' }, 404, origin);
 
-    const canGovernAccounts = governanceRoles.has(caller.admin_role);
-    const targetIsAdmin = target.role === 'admin';
-    if (target.admin_role === 'default_admin') return json({ error: 'The default admin account is protected.' }, 400, origin);
+    const callerProfile = caller as Profile;
+    const targetProfile = target as Profile;
+    const actorRole = callerProfile.admin_role!;
+    const targetIsAdmin = targetProfile.role === 'admin';
+
+    if (targetProfile.id === callerProfile.id && targetIsAdmin) {
+      return json({ error: 'Administrative self-management must use the account self-service flow.' }, 400, origin);
+    }
+    if (targetProfile.admin_role === 'default_admin') {
+      return json({ error: 'The default admin account is protected.' }, 400, origin);
+    }
+    if (targetIsAdmin && !canManageAdminRole(actorRole, targetProfile.admin_role)) {
+      return json({ error: 'You cannot manage an administrator at this hierarchy level.' }, 403, origin);
+    }
 
     if (body.action === 'delete') {
-      if (!canGovernAccounts) return json({ error: 'Only executive administrators can delete accounts.' }, 403, origin);
-      if (target.id === caller.id) return json({ error: 'You cannot delete your own account.' }, 400, origin);
-      const { error: deleteError } =
-        await serviceClient.auth.admin.deleteUser(target.id);
+      if (!governanceRoles.has(actorRole)) {
+        return json({ error: 'Only executive administrators can delete accounts.' }, 403, origin);
+      }
+      const { error: deleteError } = await serviceClient.auth.admin.deleteUser(targetProfile.id);
       if (deleteError) {
         console.error('admin-manage-user: Auth deletion failed', errorDetails(deleteError));
-        return json({
-          error: describeError(deleteError, 'Unable to delete this account.')
-        }, errorStatus(deleteError, 400), origin);
+        return json({ error: describeError(deleteError, 'Unable to delete this account.') }, errorStatus(deleteError, 400), origin);
       }
-      await writeAuditLog(serviceClient, caller.id, target.id, 'account.deleted', {
-        role: target.role,
-        admin_role: target.admin_role
+      await writeAuditLog(serviceClient, callerProfile.id, targetProfile.id, 'account.deleted', {
+        role: targetProfile.role,
+        admin_role: targetProfile.admin_role,
+        actor_admin_role: actorRole
       });
       return json({ success: true }, 200, origin);
     }
@@ -106,7 +126,7 @@ Deno.serve(async (request) => {
       const email = patch.email.trim().toLowerCase();
       if (!email.includes('@')) return json({ error: 'A valid email address is required.' }, 400, origin);
       const { data: emailOwner } = await serviceClient
-        .from('profiles').select('id').eq('email', email).neq('id', target.id).maybeSingle();
+        .from('profiles').select('id').eq('email', email).neq('id', targetProfile.id).maybeSingle();
       if (emailOwner) return json({ error: 'This email address is already registered.' }, 409, origin);
       profilePatch.email = email;
       authPatch.email = email;
@@ -115,42 +135,47 @@ Deno.serve(async (request) => {
     if (patch.phone !== undefined) profilePatch.phone = patch.phone?.trim() || null;
     if (patch.status !== undefined) {
       if (!['active', 'pending', 'rejected', 'disabled'].includes(patch.status)) return json({ error: 'Invalid account status.' }, 400, origin);
-      if (target.admin_role === 'default_admin' && patch.status !== 'active') return json({ error: 'The default admin must remain active.' }, 400, origin);
       profilePatch.status = patch.status;
     }
     if (patch.adminRole !== undefined && targetIsAdmin) {
-      if (!canGovernAccounts) return json({ error: 'Only executive administrators can change administrative roles.' }, 403, origin);
-      if (!patch.adminRole || !adminRoles.has(patch.adminRole)) return json({ error: 'Invalid admin hierarchy.' }, 400, origin);
+      if (!governanceRoles.has(actorRole)) {
+        return json({ error: 'Only executive administrators can change administrative roles.' }, 403, origin);
+      }
+      if (!patch.adminRole || !adminRoles.has(patch.adminRole) || patch.adminRole === 'default_admin') {
+        return json({ error: 'The default admin role cannot be assigned.' }, 400, origin);
+      }
+      if (!canAssignAdminRole(actorRole, patch.adminRole)) {
+        return json({ error: 'You cannot assign an administrator to this hierarchy level.' }, 403, origin);
+      }
       profilePatch.admin_role = patch.adminRole;
     }
 
     authPatch.user_metadata = {
-      display_name: profilePatch.display_name ?? target.display_name,
-      phone: profilePatch.phone ?? target.phone ?? '',
-      role: target.role,
-      admin_role: profilePatch.admin_role ?? target.admin_role ?? ''
+      display_name: profilePatch.display_name ?? String(targetProfile.display_name ?? ''),
+      phone: profilePatch.phone ?? String(targetProfile.phone ?? ''),
+      role: targetProfile.role,
+      admin_role: profilePatch.admin_role ?? targetProfile.admin_role ?? ''
     };
 
-    const { error: authUpdateError } =
-      await serviceClient.auth.admin.updateUserById(target.id, authPatch);
+    const { error: authUpdateError } = await serviceClient.auth.admin.updateUserById(targetProfile.id, authPatch);
     if (authUpdateError) {
       console.error('admin-manage-user: Auth update failed', errorDetails(authUpdateError));
-      return json({
-        error: describeError(authUpdateError, 'Unable to update this account.')
-      }, errorStatus(authUpdateError, 400), origin);
+      return json({ error: describeError(authUpdateError, 'Unable to update this account.') }, errorStatus(authUpdateError, 400), origin);
     }
 
     const { data: profile, error: profileError } = await serviceClient
-      .from('profiles').update(profilePatch).eq('id', target.id).select('*').single();
+      .from('profiles').update(profilePatch).eq('id', targetProfile.id).select('*').single();
     if (profileError) {
       console.error('admin-manage-user: profile update failed', errorDetails(profileError));
-      await rollbackAuthUpdate(serviceClient, target);
+      await rollbackAuthUpdate(serviceClient, targetProfile);
       return json({ error: describeError(profileError, 'Unable to save this account profile.') }, 400, origin);
     }
-    await writeAuditLog(serviceClient, caller.id, target.id, 'account.updated', {
+    await writeAuditLog(serviceClient, callerProfile.id, targetProfile.id, 'account.updated', {
       fields: Object.keys(profilePatch),
-      target_role: target.role,
-      target_admin_role: target.admin_role
+      target_role: targetProfile.role,
+      target_admin_role: targetProfile.admin_role,
+      resulting_admin_role: profilePatch.admin_role ?? targetProfile.admin_role,
+      actor_admin_role: actorRole
     });
     return json({ profile }, 200, origin);
   } catch (error) {
@@ -158,6 +183,33 @@ Deno.serve(async (request) => {
     return json({ error: error instanceof Error ? error.message : 'Unexpected server error.' }, 500, origin);
   }
 });
+
+function isUsableAccountManager(caller: Profile | null): boolean {
+  return Boolean(
+    caller &&
+    caller.role === 'admin' &&
+    caller.status === 'active' &&
+    !caller.must_change_password &&
+    caller.admin_role &&
+    accountManagerRoles.has(caller.admin_role)
+  );
+}
+
+function canManageAdminRole(actorRole: string, targetRole: string | null): boolean {
+  if (!targetRole || targetRole === 'default_admin' || actorRole === targetRole) return false;
+  if (actorRole === 'default_admin') return true;
+  if (actorRole === 'ceo') return targetRole === 'director' || departmentAdminRoles.has(targetRole);
+  if (actorRole === 'director') return departmentAdminRoles.has(targetRole);
+  return false;
+}
+
+function canAssignAdminRole(actorRole: string, targetRole: string): boolean {
+  if (targetRole === 'default_admin') return false;
+  if (actorRole === 'default_admin') return targetRole === 'ceo' || targetRole === 'director' || departmentAdminRoles.has(targetRole);
+  if (actorRole === 'ceo') return targetRole === 'director' || departmentAdminRoles.has(targetRole);
+  if (actorRole === 'director') return departmentAdminRoles.has(targetRole);
+  return false;
+}
 
 function allowedOrigin(request: Request): string | null {
   const requestOrigin = request.headers.get('Origin');
@@ -168,8 +220,7 @@ function allowedOrigin(request: Request): string | null {
     .map((value) => value.trim())
     .filter(Boolean);
 
-  return configuredOrigins.includes(requestOrigin) ||
-    previewOriginPattern.test(requestOrigin)
+  return configuredOrigins.includes(requestOrigin) || previewOriginPattern.test(requestOrigin)
     ? requestOrigin
     : null;
 }
@@ -185,24 +236,22 @@ function corsHeaders(origin: string) {
 
 async function rollbackAuthUpdate(
   serviceClient: SupabaseClient,
-  target: Record<string, string | null>
+  target: Profile
 ) {
   const { error } = await serviceClient.auth.admin.updateUserById(
     target.id,
     {
-      email: target.email,
+      email: String(target.email ?? ''),
       email_confirm: true,
       user_metadata: {
-        display_name: target.display_name,
-        phone: target.phone ?? '',
+        display_name: String(target.display_name ?? ''),
+        phone: String(target.phone ?? ''),
         role: target.role,
         admin_role: target.admin_role ?? ''
       }
     }
   );
-  if (error) {
-    console.error('admin-manage-user: Auth rollback failed', errorDetails(error));
-  }
+  if (error) console.error('admin-manage-user: Auth rollback failed', errorDetails(error));
 }
 
 async function writeAuditLog(

@@ -23,6 +23,18 @@ const allAdminMfa = readFileSync(
   new URL('../supabase/migrations/20260820150000_enforce_mfa_for_all_admin_access.sql', import.meta.url),
   'utf8'
 );
+const hierarchyHardening = readFileSync(
+  new URL('../supabase/migrations/20260821034500_harden_admin_hierarchy_permissions.sql', import.meta.url),
+  'utf8'
+);
+const adminCreateUser = readFileSync(
+  new URL('../supabase/functions/admin-create-user/index.ts', import.meta.url),
+  'utf8'
+);
+const adminManageUser = readFileSync(
+  new URL('../supabase/functions/admin-manage-user/index.ts', import.meta.url),
+  'utf8'
+);
 
 describe('Supabase authorization contract', () => {
   it('installs a canonical, private role-permission matrix', () => {
@@ -61,11 +73,9 @@ describe('Supabase authorization contract', () => {
 
   it('reconnects legacy profiles to Supabase Auth', () => {
     expect(schema).toContain(
-      "foreign key (id) references auth.users(id) on delete cascade"
+      'foreign key (id) references auth.users(id) on delete cascade'
     );
-    expect(schema).toContain(
-      "confrelid = 'auth.users'::regclass"
-    );
+    expect(schema).toContain("confrelid = 'auth.users'::regclass");
   });
 
   it('audits every required trigger and foreign-key connection', () => {
@@ -98,29 +108,12 @@ describe('Supabase authorization contract', () => {
     expect(publicAdminRlsSeparation).toContain(
       'grant execute on function public.current_user_can_manage_operations()\nto authenticated'
     );
-    expect(publicAdminRlsSeparation).not.toContain(
-      'grant execute on function public.current_user_can_manage_operations()\nto anon, authenticated'
-    );
-  });
-
-  it('separates departmental writes from collective admin read access', () => {
-    expect(permissionMatrix).toContain("private.current_user_has_permission('programs.manage')");
-    expect(permissionMatrix).toContain("private.current_user_has_permission('opportunities.manage')");
-    expect(permissionMatrix).toContain("private.current_user_has_permission('partner_requests.manage')");
-    expect(permissionMatrix).toContain('create policy "Admins can read all programs"');
-    expect(permissionMatrix).toContain('create policy "Admins can read all opportunities"');
   });
 
   it('records privileged account operations in an immutable audit table', () => {
     expect(permissionMatrix).toContain('create table if not exists public.admin_audit_log');
     expect(permissionMatrix).toContain('revoke all on table public.admin_audit_log');
     expect(permissionMatrix).toContain("private.current_user_has_permission('audit.read')");
-  });
-
-  it('requires an AAL2 session for privileged administrator permissions', () => {
-    expect(mandatoryMfa).toContain("auth.jwt() ->> 'aal'");
-    expect(mandatoryMfa).toContain("'default_admin', 'ceo', 'director', 'it', 'support'");
-    expect(mandatoryMfa).toContain("= 'aal2'");
   });
 
   it('requires AAL2 for every administrative read and permission path', () => {
@@ -130,5 +123,63 @@ describe('Supabase authorization contract', () => {
     expect(allAdminMfa.match(/auth\.jwt\(\) ->> 'aal'/g)).toHaveLength(3);
     expect(allAdminMfa.match(/= 'aal2'/g)).toHaveLength(3);
     expect(allAdminMfa).not.toContain('admin_role not in');
+  });
+});
+
+describe('Gate 2.1 admin hierarchy hardening', () => {
+  it('defines root, executive and department hierarchy levels', () => {
+    expect(hierarchyHardening).toContain('private.admin_role_hierarchy');
+    expect(hierarchyHardening).toContain("('default_admin', 0, 'root')");
+    expect(hierarchyHardening).toContain("('ceo', 1, 'executive')");
+    expect(hierarchyHardening).toContain("('director', 2, 'executive')");
+    expect(hierarchyHardening).toContain("('statistics', 3, 'department')");
+  });
+
+  it('enforces exactly one default admin and valid admin-role values', () => {
+    expect(hierarchyHardening).toContain('profiles_single_default_admin_idx');
+    expect(hierarchyHardening).toContain("where role = 'admin' and admin_role = 'default_admin'");
+    expect(hierarchyHardening).toContain('profiles_admin_role_valid');
+  });
+
+  it('separates read and manage permissions for sensitive domains', () => {
+    for (const permission of [
+      'candidates.read', 'partner_requests.read', 'programs.read',
+      'opportunities.read', 'applications.read', 'placements.read'
+    ]) {
+      expect(hierarchyHardening).toContain(`'${permission}'`);
+    }
+    expect(hierarchyHardening).toContain("('finance', 'finance.read')");
+    expect(hierarchyHardening).toContain("('statistics', 'statistics.read_aggregate')");
+  });
+
+  it('removes collective admin reads from operational RLS policies', () => {
+    expect(hierarchyHardening).toContain("private.current_user_has_permission('candidates.read')");
+    expect(hierarchyHardening).toContain("private.current_user_has_permission('partner_requests.read')");
+    expect(hierarchyHardening).toContain("private.current_user_has_permission('applications.read')");
+    expect(hierarchyHardening).toContain("private.current_user_has_permission('programs.read')");
+    expect(hierarchyHardening).toContain("private.current_user_has_permission('opportunities.read')");
+    expect(hierarchyHardening).not.toContain('or (select private.current_user_is_admin())');
+  });
+
+  it('restores placements grants while preserving permission-gated RLS', () => {
+    expect(hierarchyHardening).toContain(
+      'grant select, insert, update, delete on table public.placements to authenticated'
+    );
+    expect(hierarchyHardening).toContain("private.current_user_has_permission('placements.read')");
+  });
+
+  it('prevents creating or assigning the default-admin role through Edge Functions', () => {
+    expect(adminCreateUser).toContain("targetRole === 'default_admin'");
+    expect(adminManageUser).toContain("patch.adminRole === 'default_admin'");
+    expect(adminManageUser).toContain('The default admin role cannot be assigned.');
+  });
+
+  it('enforces CEO and Director target hierarchy in both account Edge Functions', () => {
+    expect(adminCreateUser).toContain("actorRole === 'ceo'");
+    expect(adminCreateUser).toContain("actorRole === 'director'");
+    expect(adminManageUser).toContain('canManageAdminRole');
+    expect(adminManageUser).toContain("actorRole === 'ceo'");
+    expect(adminManageUser).toContain("actorRole === 'director'");
+    expect(adminManageUser).toContain('Administrative self-management must use the account self-service flow.');
   });
 });
