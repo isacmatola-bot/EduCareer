@@ -63,10 +63,15 @@ export async function completePasswordRecovery(password: string): Promise<void> 
   // If this recovery replaces an administrator's temporary first-login
   // password, let the existing self-service function clear the mandatory
   // password-change flag. Established admins skip this path and retain MFA.
-  const { data: profile } = await client
-    .from('profiles')
-    .select('role,must_change_password')
-    .maybeSingle();
+  const { data: userData } = await client.auth.getUser();
+  const userId = userData.user?.id;
+  const { data: profile } = userId
+    ? await client
+        .from('profiles')
+        .select('role,must_change_password')
+        .eq('id', userId)
+        .maybeSingle()
+    : { data: null };
 
   if (profile?.role === 'admin' && profile.must_change_password) {
     const { data: functionData, error: functionError } = await client.functions.invoke('account-self-service', {
