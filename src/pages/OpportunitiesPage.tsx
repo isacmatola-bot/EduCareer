@@ -22,17 +22,32 @@ type MemberAccess = 'checking' | 'active' | 'restricted';
 const accessCopy = {
   en: {
     checking: 'Checking account access…',
-    restricted: 'Opportunities are available only to active EduCareer accounts. Sign in with an active account or wait for your registration to be approved.'
+    restricted: 'Opportunities are available only to active EduCareer accounts. Sign in with an active account or wait for your registration to be approved.',
+    deadlinePassed: 'Deadline passed'
   },
   pt: {
     checking: 'A verificar o acesso da conta…',
-    restricted: 'As oportunidades estão disponíveis apenas para contas EduCareer activas. Entre com uma conta activa ou aguarde a aprovação da sua inscrição.'
+    restricted: 'As oportunidades estão disponíveis apenas para contas EduCareer activas. Entre com uma conta activa ou aguarde a aprovação da sua inscrição.',
+    deadlinePassed: 'Prazo encerrado'
   },
   jp: {
     checking: 'アカウントのアクセス権を確認しています…',
-    restricted: '求人・機会情報は有効なEduCareerアカウントのみ閲覧できます。有効なアカウントでログインするか、登録の承認をお待ちください。'
+    restricted: '求人・機会情報は有効なEduCareerアカウントのみ閲覧できます。有効なアカウントでログインするか、登録の承認をお待ちください。',
+    deadlinePassed: '応募期限終了'
   }
 } as const;
+
+function currentLocalDateKey(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function isOpportunityDeadlinePassed(deadline: string): boolean {
+  return deadline < currentLocalDateKey();
+}
 
 export function OpportunitiesPage({
   opportunities,
@@ -240,6 +255,8 @@ export function OpportunitiesPage({
           const isPending = pendingOpportunityId === opportunity.id;
           const partnerOwnsOpportunity = Boolean(partnerPublisherId && opportunity.createdBy === partnerPublisherId);
           const canManageItem = canManage || partnerOwnsOpportunity;
+          const deadlinePassed = isOpportunityDeadlinePassed(opportunity.deadline);
+          const applicationUnavailable = opportunity.status === 'Closed' || deadlinePassed;
 
           return (
             <article className="opportunity-card" key={opportunity.id}>
@@ -262,9 +279,9 @@ export function OpportunitiesPage({
                     <button className="secondary admin-icon-button" type="button" disabled={isPending} onClick={() => void deleteOpportunity(opportunity)} aria-label={t('actions.delete')} title={t('actions.delete')}><Icon name="delete" /></button>
                   </div>
                 ) : canApply ? (
-                  <button className="secondary opportunity-action" type="button" disabled={opportunity.status === 'Closed'} onClick={() => onApplyOpportunity(opportunity)}>
+                  <button className="secondary opportunity-action" type="button" disabled={applicationUnavailable} onClick={() => onApplyOpportunity(opportunity)}>
                     <Icon name="opportunities" />
-                    {opportunity.status === 'Closed' ? t('opportunities.closed') : t('opportunities.apply')}
+                    {deadlinePassed ? copy.deadlinePassed : opportunity.status === 'Closed' ? t('opportunities.closed') : t('opportunities.apply')}
                   </button>
                 ) : null}
               </div>
