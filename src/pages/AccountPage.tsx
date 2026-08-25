@@ -12,11 +12,16 @@ type AccountPageProps = {
   onSave: (patch: SelfServiceAccountPatch) => void;
 };
 
+type PasswordAwarePatch = SelfServiceAccountPatch & {
+  currentPassword?: string;
+};
+
 export function AccountPage({ account, saving, securityOnly = false, onSave }: AccountPageProps) {
   const { t } = useI18n();
   const [displayName, setDisplayName] = useState(account.displayName);
   const [phone, setPhone] = useState(account.phone ?? '');
   const [email, setEmail] = useState(account.email);
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [localError, setLocalError] = useState('');
@@ -31,6 +36,10 @@ export function AccountPage({ account, saving, securityOnly = false, onSave }: A
     event.preventDefault();
     setLocalError('');
 
+    if (password && !currentPassword) {
+      setLocalError('Current password is required when setting a new password.');
+      return;
+    }
     if (password && !passwordMeetsPolicy(password)) {
       setLocalError(passwordPolicyMessage);
       return;
@@ -40,9 +49,21 @@ export function AccountPage({ account, saving, securityOnly = false, onSave }: A
       return;
     }
 
-    onSave(securityOnly
-      ? { password: password || undefined }
-      : { displayName, phone: phone || undefined, email, password: password || undefined });
+    const patch: PasswordAwarePatch = securityOnly
+      ? {
+          currentPassword: currentPassword || undefined,
+          password: password || undefined
+        }
+      : {
+          displayName,
+          phone: phone || undefined,
+          email,
+          currentPassword: password ? currentPassword || undefined : undefined,
+          password: password || undefined
+        };
+
+    onSave(patch);
+    setCurrentPassword('');
     setPassword('');
     setConfirmPassword('');
   }
@@ -101,6 +122,17 @@ export function AccountPage({ account, saving, securityOnly = false, onSave }: A
         </>}
 
         <h3>{t('account.security')}</h3>
+        <label>
+          {t('form.password')}
+          <input
+            type="password"
+            required={securityOnly || Boolean(password)}
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
+          />
+          <small className="muted">Use the password you used to sign in. For a newly created admin account, enter the temporary password.</small>
+        </label>
         <label>
           {t('account.newPassword')}
           <input

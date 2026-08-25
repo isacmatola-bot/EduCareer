@@ -12,6 +12,7 @@ type UpdateRequest = {
     displayName?: string;
     phone?: string | null;
     email?: string;
+    currentPassword?: string;
     password?: string;
   };
 };
@@ -86,6 +87,9 @@ Deno.serve(async (request) => {
     if (patch.password !== undefined && !passwordMeetsPolicy(patch.password)) {
       return json({ error: passwordPolicyMessage }, 400, origin);
     }
+    if (patch.password && !patch.currentPassword?.trim()) {
+      return json({ error: 'Current password is required when setting a new password.' }, 400, origin);
+    }
     if (currentProfile.role === 'admin' && currentProfile.must_change_password) {
       const changesProfile = patch.displayName !== undefined || patch.phone !== undefined || patch.email !== undefined;
       if (!patch.password || changesProfile) {
@@ -117,11 +121,15 @@ Deno.serve(async (request) => {
 
     const authPatch: {
       email?: string;
+      current_password?: string;
       password?: string;
       data?: Record<string, string>;
     } = { data: metadata };
     if (emailChanged) authPatch.email = requestedEmail;
-    if (patch.password) authPatch.password = patch.password;
+    if (patch.password) {
+      authPatch.current_password = patch.currentPassword?.trim();
+      authPatch.password = patch.password;
+    }
 
     const authUpdateError = await updateAuthenticatedUser(
       supabaseUrl,
@@ -215,6 +223,7 @@ async function updateAuthenticatedUser(
   authorization: string,
   attributes: {
     email?: string;
+    current_password?: string;
     password?: string;
     data?: Record<string, string>;
   }

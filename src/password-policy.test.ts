@@ -50,4 +50,13 @@ describe('production password policy', () => {
     expect(selfServiceFunction).toContain('password.length >= 12');
     expect(selfServiceFunction).toContain('passwordPolicyMessage');
   });
+
+  it('requires the current password when changing an account password', () => {
+    expect(accountPage).toContain('currentPassword');
+    expect(accountPage).toContain('autoComplete="current-password"');
+    expect(accountPage).toContain('Current password is required when setting a new password.');
+    expect(selfServiceFunction).toContain('currentPassword?: string');
+    expect(selfServiceFunction).toContain("authPatch.current_password = patch.currentPassword?.trim()");
+    expect(selfServiceFunction).toContain('current_password?: string');
+  });
 });
